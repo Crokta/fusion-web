@@ -64,7 +64,9 @@ export function TriagePage() {
         eyebrow="Operations · Triage"
         title="Triage"
         description="Stories sent from the feed. Their originals are captured and sealed while they wait; promoting one opens a case with that evidence attached."
-        actions={<Segmented label="Status" value={status} onChange={setStatus} options={STATUSES} />}
+        actions={
+          <Segmented label="Status" value={status} onChange={setStatus} options={STATUSES} />
+        }
       />
 
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(0,460px)]">
@@ -158,9 +160,7 @@ function TriageDetail({ item }: { item: TriageItem }) {
   return (
     <div className="flex min-w-0 flex-col gap-5 self-start animate-rise-in">
       <Panel eyebrow={item.outlet} title={item.headline}>
-        {item.summary && (
-          <p className="text-[12.5px] leading-relaxed text-ink-2">{item.summary}</p>
-        )}
+        {item.summary && <p className="text-[12.5px] leading-relaxed text-ink-2">{item.summary}</p>}
         <p className="mt-2 truncate font-mono text-[11px] text-ink-faint" title={item.url}>
           {item.url}
         </p>
@@ -268,7 +268,12 @@ function PromotePanel({ item }: { item: TriageItem }) {
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <div>
             <span className="eyebrow mb-1.5 block">Priority</span>
-            <Segmented label="Priority" value={priority} onChange={setPriority} options={PRIORITIES} />
+            <Segmented
+              label="Priority"
+              value={priority}
+              onChange={setPriority}
+              options={PRIORITIES}
+            />
           </div>
           <Field label="Deadline">
             <input

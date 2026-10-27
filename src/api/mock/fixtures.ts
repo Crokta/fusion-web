@@ -1684,7 +1684,11 @@ const capture = (
   minutes: number,
   sha256: string,
 ): EvidenceItem => {
-  const label = { warc: 'Web archive (WARC)', html: 'Page HTML', screenshot: 'Full-page screenshot' }[role]
+  const label = {
+    warc: 'Web archive (WARC)',
+    html: 'Page HTML',
+    screenshot: 'Full-page screenshot',
+  }[role]
   return {
     id,
     ref: `EV-${id.slice(-6).toUpperCase()}`,
@@ -1719,9 +1723,27 @@ export const triageItems: TriageItem[] = [
     promotedAt: null,
     promotedBy: null,
     evidence: [
-      capture('ev-tr-0001-warc', 'warc', bridgeLink, 13, '3f9a1c7e5b2d8f4a0c6e2b9d5f1a7c3e9b5d1f7a3c9e5b1d7f3a9c5e1b7d3f9a'),
-      capture('ev-tr-0001-html', 'html', bridgeLink, 13, '8c2e6a0d4f9b3e7c1a5d9f3b7e1c5a9d3f7b1e5c9a3d7f1b5e9c3a7d1f5b9e3c'),
-      capture('ev-tr-0001-shot', 'screenshot', bridgeLink, 13, 'd5b1f7c3a9e5d1b7f3c9a5e1d7b3f9c5a1e7d3b9f5c1a7e3d9b5f1c7a3e9d5b1'),
+      capture(
+        'ev-tr-0001-warc',
+        'warc',
+        bridgeLink,
+        13,
+        '3f9a1c7e5b2d8f4a0c6e2b9d5f1a7c3e9b5d1f7a3c9e5b1d7f3a9c5e1b7d3f9a',
+      ),
+      capture(
+        'ev-tr-0001-html',
+        'html',
+        bridgeLink,
+        13,
+        '8c2e6a0d4f9b3e7c1a5d9f3b7e1c5a9d3f7b1e5c9a3d7f1b5e9c3a7d1f5b9e3c',
+      ),
+      capture(
+        'ev-tr-0001-shot',
+        'screenshot',
+        bridgeLink,
+        13,
+        'd5b1f7c3a9e5d1b7f3c9a5e1d7b3f9c5a1e7d3b9f5c1a7e3d9b5f1c7a3e9d5b1',
+      ),
     ],
     evidenceCount: 3,
     etag: '"v2"',

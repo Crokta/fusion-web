@@ -3,7 +3,11 @@ import {
   type ApprovalDto,
   type AuditEntryDto,
   type CaseDto,
+  type EvidenceDto,
   type StoryDto,
+  type TriageItemDto,
+  evidenceLabel,
+  fromPriority,
   policyLabel,
   toAlert,
   toApproval,
@@ -12,6 +16,7 @@ import {
   toCaseSummary,
   toPolicy,
   toStoryGroups,
+  toTriageItem,
   toWallState,
 } from '@/api/adapters'
 
@@ -213,6 +218,16 @@ describe('feed, alerts and the wall', () => {
     })
   })
 
+  it("takes the group's channel from intake, reading anything unknown as information", () => {
+    const security = { ...story('1', 'g', 'https://punchng.com/a', '2026-10-27T09:00:00Z') }
+    const groups = toStoryGroups([
+      { ...security, channel: 'security' },
+      { ...story('2', 'h', 'https://punchng.com/b', '2026-10-27T08:00:00Z'), channel: 'sport' },
+      story('3', 'i', 'https://punchng.com/c', '2026-10-27T07:00:00Z'),
+    ])
+    expect(groups.map((g) => g.channel)).toEqual(['security', 'information', 'information'])
+  })
+
   it('shows an unacknowledged escalated alert as escalated', () => {
     const a = toAlert(
       {
@@ -250,5 +265,87 @@ describe('feed, alerts and the wall', () => {
     )
     expect(w).toMatchObject({ revision: 7, controller: 'simulated', updatedBy: 'Rex Reviewer' })
     expect(w.screens).toHaveLength(16)
+  })
+})
+
+describe('triage and evidence', () => {
+  const link =
+    'https://dailytrust.com/breaking-tinubu-asks-senate-to-approve-20-5bn-e1-04bn-foreign-loans/'
+  const evidence = (
+    id: string,
+    role: string | null,
+    contentType: string,
+    stamped: boolean,
+  ): EvidenceDto => ({
+    id,
+    caseId: null,
+    role,
+    timestampGenTime: stamped ? '2026-10-27T17:03:51Z' : null,
+    sourceUrl: link,
+    contentType,
+    sizeBytes: 1,
+    sha256: 'a'.repeat(64),
+    status: 'active',
+    registeredAt: '2026-10-27T17:03:51Z',
+    registeredBy: 'service:evidence',
+  })
+
+  it('says what each original of a capture is', () => {
+    expect(evidenceLabel({ role: 'warc', contentType: 'application/warc' })).toBe(
+      'Web archive (WARC)',
+    )
+    expect(evidenceLabel({ role: 'html', contentType: 'text/html' })).toBe('Page HTML')
+    expect(evidenceLabel({ role: 'screenshot', contentType: 'image/png' })).toBe(
+      'Full-page screenshot',
+    )
+    expect(evidenceLabel({ role: null, contentType: 'application/pdf' })).toBe('PDF document')
+    expect(evidenceLabel({ contentType: 'image/jpeg' })).toBe('Image')
+  })
+
+  // Shape as casework returned it in the live slice check (2026-10-27).
+  const item: TriageItemDto = {
+    id: '01a17e51-2d0c-74d0-bf46-e307b48d1d6a',
+    storyId: '01a17e42-22ce-73bc-9582-811dca1787d9',
+    url: link,
+    title: null,
+    status: 'pending',
+    caseId: null,
+    createdAt: '2026-10-27T17:03:31Z',
+    promotedAt: null,
+    promotedBy: null,
+    evidenceIds: ['e1', 'e2'],
+    evidenceCount: 2,
+    version: 3,
+  }
+
+  it('takes the headline from intake and the originals from evidence', () => {
+    const t = toTriageItem(
+      item,
+      { headline: 'Tinubu asks Senate to approve $20.5bn, €1.04bn foreign loans', summary: 'S' },
+      [
+        evidence('e1', 'warc', 'application/warc', true),
+        evidence('e2', 'html', 'text/html', false),
+      ],
+      name,
+    )
+    expect(t).toMatchObject({
+      headline: 'Tinubu asks Senate to approve $20.5bn, €1.04bn foreign loans',
+      outlet: 'dailytrust.com',
+      status: 'pending',
+      etag: '"v3"',
+    })
+    expect(t.evidence.map((e) => [e.label, e.timestamped])).toEqual([
+      ['Web archive (WARC)', true],
+      ['Page HTML', false],
+    ])
+  })
+
+  it('still lists an item when intake cannot say what the story was', () => {
+    expect(toTriageItem(item, null, [], name).headline).toBe('dailytrust.com')
+  })
+
+  it("speaks casework's word for a normal priority", () => {
+    expect(fromPriority('medium')).toBe('normal')
+    expect(fromPriority('high')).toBe('high')
   })
 })

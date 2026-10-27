@@ -4,17 +4,11 @@ import {
   Brain,
   Check,
   ClipboardList,
-  Copy,
-  FileAudio,
   FileSearch,
   FileText,
-  FileVideo,
   Flag,
   GitCommitVertical,
-  Globe,
-  Image,
   ListChecks,
-  MessageSquareQuote,
   MessageSquareText,
   Quote,
   Scale,
@@ -23,7 +17,6 @@ import {
   UserPlus,
   type LucideIcon,
 } from 'lucide-react'
-import { useState } from 'react'
 import { ApiError, describeError } from '@/api'
 import { useCase, useSubmitCase } from '@/api/queries'
 import type { CaseDetail, Claim, EvidenceItem, Finding, TimelineEntry } from '@/api/types'
