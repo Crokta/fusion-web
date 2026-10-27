@@ -30,6 +30,8 @@ import type {
   Story,
   StoryGroup,
   TimelineEntry,
+  TriageItem,
+  TriageStatus,
   WallPreset,
   WallPublication,
   WallState,
@@ -84,6 +86,9 @@ export interface CaseDto {
 export interface EvidenceDto {
   id: string
   caseId: string | null
+  /** warc | screenshot | html | media for captures; null for uploads. */
+  role?: string | null
+  timestampGenTime?: string | null
   sourceUrl: string | null
   contentType: string
   sizeBytes: number
@@ -159,10 +164,27 @@ export interface StoryDto {
   canonicalUrl: string
   headline: string
   summary: string | null
+  /** intake's channel: security, public-safety, politics, economy, health or information. */
+  channel?: string
   publishedAt: string
   fetchedAt: string
   triageItemId: string | null
   sentToTriageAt: string | null
+}
+
+export interface TriageItemDto {
+  id: string
+  storyId: string | null
+  url: string
+  title: string | null
+  status: string
+  caseId: string | null
+  createdAt: string
+  promotedAt: string | null
+  promotedBy: string | null
+  evidenceIds: string[]
+  evidenceCount: number
+  version: number
 }
 
 export interface AlertDto {
@@ -216,6 +238,9 @@ export const toRole = (r: string | null | undefined): Role =>
 export const toPriority = (p: string | null | undefined): Priority =>
   p === 'critical' || p === 'high' ? 'high' : p === 'low' ? 'low' : 'medium'
 
+/** casework's priorities are low, normal, high and critical; the screens show three. */
+export const fromPriority = (p: Priority): string => (p === 'medium' ? 'normal' : p)
+
 const CASE_STATES: readonly string[] = [
   'triage',
   'open',
@@ -261,6 +286,23 @@ export function toCaseSummary(c: CaseDto, name: NameOf): CaseSummary {
   }
 }
 
+/** What a capture's file is, in words an analyst reads. */
+const EVIDENCE_ROLE_LABEL: Record<string, string> = {
+  warc: 'Web archive (WARC)',
+  html: 'Page HTML',
+  screenshot: 'Full-page screenshot',
+  media: 'Public video',
+}
+
+export function evidenceLabel(e: Pick<EvidenceDto, 'role' | 'contentType'>): string {
+  if (e.role && EVIDENCE_ROLE_LABEL[e.role]) return EVIDENCE_ROLE_LABEL[e.role]!
+  if (e.contentType.startsWith('image/')) return 'Image'
+  if (e.contentType.startsWith('video/')) return 'Video'
+  if (e.contentType.startsWith('audio/')) return 'Audio'
+  if (e.contentType === 'application/pdf') return 'PDF document'
+  return 'Document'
+}
+
 export function toEvidenceItem(e: EvidenceDto): EvidenceItem {
   const kind: EvidenceItem['kind'] = e.contentType.startsWith('image/')
     ? 'image'
@@ -271,16 +313,20 @@ export function toEvidenceItem(e: EvidenceDto): EvidenceItem {
         : e.contentType.includes('html') || e.contentType.includes('warc')
           ? 'web-capture'
           : 'document'
+  const label = evidenceLabel(e)
   return {
     id: e.id,
     ref: `EV-${shortId(e.id)}`,
     kind,
-    title: e.sourceUrl ?? e.contentType,
+    title: label,
+    label,
+    link: e.sourceUrl ?? undefined,
     source: e.sourceUrl ? hostOf(e.sourceUrl) : 'upload',
     capturedAt: e.registeredAt,
     sha256: e.sha256,
     custodyEvents: 1,
     marking: DEFAULT_MARKING,
+    timestamped: !!e.timestampGenTime,
   }
 }
 
@@ -461,6 +507,19 @@ export const hostOf = (url: string) => {
   }
 }
 
+const CHANNELS: readonly StoryGroup['channel'][] = [
+  'security',
+  'public-safety',
+  'politics',
+  'economy',
+  'health',
+  'information',
+]
+
+/** A channel intake doesn't know (or an older intake that sends none) reads as Information. */
+export const toChannel = (c: string | null | undefined): StoryGroup['channel'] =>
+  CHANNELS.includes(c as StoryGroup['channel']) ? (c as StoryGroup['channel']) : 'information'
+
 /** intake lists stories; the feed shows their story groups, newest activity first. */
 export function toStoryGroups(stories: StoryDto[]): StoryGroup[] {
   const groups = new Map<string, StoryDto[]>()
@@ -474,7 +533,7 @@ export function toStoryGroups(stories: StoryDto[]): StoryGroup[] {
         headline: lead.headline,
         summary: lead.summary ?? '',
         place: '—',
-        channel: 'information' as const,
+        channel: toChannel(lead.channel),
         priority: 'medium' as const,
         firstSeen: lead.publishedAt,
         lastUpdated: sorted[sorted.length - 1]!.publishedAt,
@@ -491,6 +550,42 @@ export function toStoryGroups(stories: StoryDto[]): StoryGroup[] {
       }
     })
     .sort((a, b) => b.lastUpdated.localeCompare(a.lastUpdated))
+}
+
+// ---------------------------------------------------------------------------------------
+// Triage
+// ---------------------------------------------------------------------------------------
+
+const TRIAGE_STATUSES: readonly TriageStatus[] = ['pending', 'promoted', 'dismissed']
+
+/**
+ * casework knows the link and its originals; intake knows the headline. The story is optional
+ * because casework keeps the item if intake can't answer.
+ */
+export function toTriageItem(
+  t: TriageItemDto,
+  story: Pick<StoryDto, 'headline' | 'summary'> | null,
+  evidence: EvidenceDto[],
+  name: NameOf,
+): TriageItem {
+  return {
+    id: t.id,
+    storyId: t.storyId,
+    headline: story?.headline ?? t.title ?? hostOf(t.url),
+    summary: story?.summary ?? '',
+    url: t.url,
+    outlet: hostOf(t.url),
+    status: TRIAGE_STATUSES.includes(t.status as TriageStatus)
+      ? (t.status as TriageStatus)
+      : 'pending',
+    sentAt: t.createdAt,
+    caseId: t.caseId,
+    promotedAt: t.promotedAt,
+    promotedBy: t.promotedBy ? name(t.promotedBy) : null,
+    evidence: evidence.map(toEvidenceItem),
+    evidenceCount: t.evidenceCount,
+    etag: `"v${t.version}"`,
+  }
 }
 
 export function toAlert(a: AlertDto, name: NameOf): Alert {

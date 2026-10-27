@@ -180,6 +180,12 @@ export interface EvidenceItem {
   sha256: string
   custodyEvents: number
   marking: Marking
+  /** What the file is, e.g. "Web archive (WARC)"; falls back to the kind. */
+  label?: string
+  /** The original link for captures; the title is then the label. */
+  link?: string
+  /** An RFC 3161 token is stored for the original. */
+  timestamped?: boolean
 }
 
 /** Model output. Indicators inform analysts; they never set a finding (Section 7). */
@@ -222,6 +228,36 @@ export interface CaseDetail extends CaseSummary {
   checklist: { label: string; done: boolean }[]
   /** ETag for If-Match on mutations. */
   etag: string
+}
+
+// ---------------------------------------------------------------- triage
+
+export type TriageStatus = 'pending' | 'promoted' | 'dismissed'
+
+/** A story an analyst sent to triage; its originals are preserved while it waits. */
+export interface TriageItem {
+  id: string
+  storyId: string | null
+  headline: string
+  summary: string
+  url: string
+  outlet: string
+  status: TriageStatus
+  sentAt: string
+  caseId: string | null
+  promotedAt: string | null
+  promotedBy: string | null
+  evidence: EvidenceItem[]
+  /** Preservation runs after the item is created; until it lands, there is nothing to show. */
+  evidenceCount: number
+  etag: string
+}
+
+export interface PromoteInput {
+  title: string
+  ownerId: string
+  priority: Priority
+  deadline: string
 }
 
 // ---------------------------------------------------------------- review

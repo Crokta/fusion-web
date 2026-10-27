@@ -16,6 +16,7 @@ import type {
   SearchHit,
   StoryGroup,
   TimelineEntry,
+  TriageItem,
   WallContentKey,
   WallPreset,
   WallPublication,
@@ -1673,6 +1674,73 @@ export const wallPublications: WallPublication[] = [
     requestedBy: people.zainab.name,
     requestedAt: ago(40),
     status: 'approved',
+  },
+]
+
+const capture = (
+  id: string,
+  role: 'warc' | 'html' | 'screenshot',
+  link: string,
+  minutes: number,
+  sha256: string,
+): EvidenceItem => {
+  const label = { warc: 'Web archive (WARC)', html: 'Page HTML', screenshot: 'Full-page screenshot' }[role]
+  return {
+    id,
+    ref: `EV-${id.slice(-6).toUpperCase()}`,
+    kind: role === 'screenshot' ? 'image' : 'web-capture',
+    title: label,
+    label,
+    link,
+    source: new URL(link).hostname,
+    capturedAt: ago(minutes),
+    sha256,
+    custodyEvents: 1,
+    marking: 'OFFICIAL',
+    timestamped: true,
+  }
+}
+
+const bridgeLink = 'https://example-desk.ng/news/minna-bida-bridge-closed-after-flood'
+
+/** Synthetic: the stories are fictional, the shape is what casework and evidence return. */
+export const triageItems: TriageItem[] = [
+  {
+    id: 'tr-0001-minna',
+    storyId: 'st-minna-bridge',
+    headline: 'Minna–Bida bridge closed after overnight flooding',
+    summary:
+      'State emergency officials closed the bridge at dawn after flood water undermined an abutment. Motorists are being diverted through Paiko.',
+    url: bridgeLink,
+    outlet: 'example-desk.ng',
+    status: 'pending',
+    sentAt: ago(14),
+    caseId: null,
+    promotedAt: null,
+    promotedBy: null,
+    evidence: [
+      capture('ev-tr-0001-warc', 'warc', bridgeLink, 13, '3f9a1c7e5b2d8f4a0c6e2b9d5f1a7c3e9b5d1f7a3c9e5b1d7f3a9c5e1b7d3f9a'),
+      capture('ev-tr-0001-html', 'html', bridgeLink, 13, '8c2e6a0d4f9b3e7c1a5d9f3b7e1c5a9d3f7b1e5c9a3d7f1b5e9c3a7d1f5b9e3c'),
+      capture('ev-tr-0001-shot', 'screenshot', bridgeLink, 13, 'd5b1f7c3a9e5d1b7f3c9a5e1d7b3f9c5a1e7d3b9f5c1a7e3d9b5f1c7a3e9d5b1'),
+    ],
+    evidenceCount: 3,
+    etag: '"v2"',
+  },
+  {
+    id: 'tr-0002-kano',
+    storyId: 'st-kano-market',
+    headline: 'Traders report fire at Kano textile market',
+    summary: 'Witnesses describe smoke over the eastern section; no official statement yet.',
+    url: 'https://example-desk.ng/news/kano-market-fire',
+    outlet: 'example-desk.ng',
+    status: 'pending',
+    sentAt: ago(3),
+    caseId: null,
+    promotedAt: null,
+    promotedBy: null,
+    evidence: [],
+    evidenceCount: 0,
+    etag: '"v1"',
   },
 ]
 

@@ -16,6 +16,7 @@ import { Route as ApprovalsRouteImport } from './routes/approvals'
 import { Route as FeedRouteImport } from './routes/feed'
 import { Route as ReviewRouteImport } from './routes/review'
 import { Route as SearchRouteImport } from './routes/search'
+import { Route as TriageRouteImport } from './routes/triage'
 import { Route as WallRouteImport } from './routes/wall'
 import { Route as CasesIndexRouteImport } from './routes/cases/index'
 import { Route as CasesCaseIdRouteImport } from './routes/cases/$caseId'
@@ -55,6 +56,11 @@ const SearchRoute = SearchRouteImport.update({
   path: '/search',
   getParentRoute: () => rootRouteImport,
 } as any)
+const TriageRoute = TriageRouteImport.update({
+  id: '/triage',
+  path: '/triage',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const WallRoute = WallRouteImport.update({
   id: '/wall',
   path: '/wall',
@@ -79,6 +85,7 @@ export interface FileRoutesByFullPath {
   '/feed': typeof FeedRoute
   '/review': typeof ReviewRoute
   '/search': typeof SearchRoute
+  '/triage': typeof TriageRoute
   '/wall': typeof WallRoute
   '/cases/$caseId': typeof CasesCaseIdRoute
   '/cases/': typeof CasesIndexRoute
@@ -91,6 +98,7 @@ export interface FileRoutesByTo {
   '/feed': typeof FeedRoute
   '/review': typeof ReviewRoute
   '/search': typeof SearchRoute
+  '/triage': typeof TriageRoute
   '/wall': typeof WallRoute
   '/cases/$caseId': typeof CasesCaseIdRoute
   '/cases': typeof CasesIndexRoute
@@ -104,6 +112,7 @@ export interface FileRoutesById {
   '/feed': typeof FeedRoute
   '/review': typeof ReviewRoute
   '/search': typeof SearchRoute
+  '/triage': typeof TriageRoute
   '/wall': typeof WallRoute
   '/cases/$caseId': typeof CasesCaseIdRoute
   '/cases/': typeof CasesIndexRoute
@@ -118,6 +127,7 @@ export interface FileRouteTypes {
     | '/feed'
     | '/review'
     | '/search'
+    | '/triage'
     | '/wall'
     | '/cases/$caseId'
     | '/cases/'
@@ -130,6 +140,7 @@ export interface FileRouteTypes {
     | '/feed'
     | '/review'
     | '/search'
+    | '/triage'
     | '/wall'
     | '/cases/$caseId'
     | '/cases'
@@ -142,6 +153,7 @@ export interface FileRouteTypes {
     | '/feed'
     | '/review'
     | '/search'
+    | '/triage'
     | '/wall'
     | '/cases/$caseId'
     | '/cases/'
@@ -155,6 +167,7 @@ export interface RootRouteChildren {
   FeedRoute: typeof FeedRoute
   ReviewRoute: typeof ReviewRoute
   SearchRoute: typeof SearchRoute
+  TriageRoute: typeof TriageRoute
   WallRoute: typeof WallRoute
   CasesCaseIdRoute: typeof CasesCaseIdRoute
   CasesIndexRoute: typeof CasesIndexRoute
@@ -211,6 +224,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SearchRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/triage': {
+      id: '/triage'
+      path: '/triage'
+      fullPath: '/triage'
+      preLoaderRoute: typeof TriageRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/wall': {
       id: '/wall'
       path: '/wall'
@@ -243,6 +263,7 @@ const rootRouteChildren: RootRouteChildren = {
   FeedRoute: FeedRoute,
   ReviewRoute: ReviewRoute,
   SearchRoute: SearchRoute,
+  TriageRoute: TriageRoute,
   WallRoute: WallRoute,
   CasesCaseIdRoute: CasesCaseIdRoute,
   CasesIndexRoute: CasesIndexRoute,

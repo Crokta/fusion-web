@@ -6,6 +6,7 @@ import type {
   CaseState,
   CaseSummary,
   ItemDetail,
+  PromoteInput,
   Me,
   Page,
   PolicyRecord,
@@ -14,6 +15,8 @@ import type {
   SearchKind,
   SearchResponse,
   StoryGroup,
+  TriageItem,
+  TriageStatus,
   WallContentKey,
   WallPreset,
   WallPresetKey,
@@ -36,6 +39,10 @@ export interface FusionApi {
 
   alerts(params?: { status?: string }): Promise<Page<Alert>>
   acknowledgeAlert(id: string): Promise<Alert>
+
+  triage(params?: { status?: TriageStatus }): Promise<Page<TriageItem>>
+  /** Opens a case from the item; resolves to the new case's id. */
+  promoteTriage(id: string, input: PromoteInput): Promise<{ caseId: string }>
 
   cases(params?: { state?: CaseState | 'active'; q?: string }): Promise<Page<CaseSummary>>
   case(id: string): Promise<CaseDetail>

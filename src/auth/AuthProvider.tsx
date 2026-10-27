@@ -216,6 +216,8 @@ export const can = {
   publishToWall: (r: Role) => r === 'supervisor' || r === 'centre_lead',
   decideWallRequest: (r: Role) => r === 'supervisor' || r === 'centre_lead',
   decideReview: (r: Role) => r === 'reviewer' || r === 'supervisor' || r === 'centre_lead',
+  /** triage.work in permissions.yaml: reading the queue and promoting from it. */
+  workTriage: (r: Role) => r === 'analyst' || r === 'supervisor',
   changePolicy: (r: Role) => r === 'admin' || r === 'centre_lead',
   viewAudit: (r: Role) => r === 'admin' || r === 'centre_lead' || r === 'supervisor',
 }

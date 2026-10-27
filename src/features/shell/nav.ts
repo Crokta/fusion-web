@@ -4,6 +4,7 @@ import {
   ClipboardCheck,
   FileText,
   FolderKanban,
+  Inbox,
   LayoutDashboard,
   MapPin,
   MonitorPlay,
@@ -39,6 +40,7 @@ export const NAV: NavGroup[] = [
     label: 'Operations',
     items: [
       { to: '/', label: 'Watch Floor', icon: LayoutDashboard, hint: '1' },
+      { to: '/triage', label: 'Triage', icon: Inbox },
       { to: '/cases', label: 'Cases', icon: FolderKanban, hint: '2' },
       { to: '/review', label: 'Review', icon: ClipboardCheck, hint: '3' },
       {

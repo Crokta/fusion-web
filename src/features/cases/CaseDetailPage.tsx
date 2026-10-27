@@ -47,15 +47,7 @@ import { cn } from '@/lib/cn'
 import { dateTime, relative } from '@/lib/format'
 import { useNow } from '@/lib/hooks'
 import { SlaChip } from './CasesPage'
-
-const evidenceIcon: Record<EvidenceItem['kind'], LucideIcon> = {
-  image: Image,
-  video: FileVideo,
-  document: FileText,
-  'web-capture': Globe,
-  audio: FileAudio,
-  statement: MessageSquareQuote,
-}
+import { EvidenceList } from './EvidenceList'
 
 const confidenceTone: Record<Finding['confidence'], Tone> = {
   high: 'green',
@@ -323,91 +315,22 @@ function CaseView({ c }: { c: CaseDetail }) {
 }
 
 function EvidencePanel({ evidence }: { evidence: EvidenceItem[] }) {
-  const toast = useToast()
-  const [copied, setCopied] = useState<string | null>(null)
-  const copy = async (e: EvidenceItem) => {
-    try {
-      await navigator.clipboard.writeText(e.sha256)
-      setCopied(e.id)
-      setTimeout(() => setCopied((c) => (c === e.id ? null : c)), 1600)
-    } catch {
-      toast({
-        title: 'Copy failed',
-        detail: 'Clipboard is not available in this browser.',
-        tone: 'warning',
-      })
-    }
-  }
   return (
     <Panel
       title="Evidence"
       icon={FileSearch}
       actions={
-        <span className="text-[11px] text-ink-faint">Originals sealed · SHA-256 + RFC 3161</span>
+        <span className="hidden text-[11px] text-ink-faint sm:inline">
+          Originals sealed · SHA-256 + RFC 3161
+        </span>
       }
-      bodyClassName="p-0 overflow-x-auto"
+      bodyClassName="p-0"
     >
-      <table className="w-full min-w-[720px] text-left text-[12px]">
-        <thead>
-          <tr className="eyebrow border-b border-line-soft text-[9.5px]">
-            <th className="py-2 pr-2 pl-4 font-semibold">Ref</th>
-            <th className="px-2 py-2 font-semibold">Item</th>
-            <th className="px-2 py-2 font-semibold">Captured</th>
-            <th className="px-2 py-2 font-semibold">SHA-256</th>
-            <th className="px-2 py-2 text-right font-semibold">Custody</th>
-            <th className="py-2 pr-4 pl-2 font-semibold">Marking</th>
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-line-soft">
-          {evidence.map((e) => {
-            const Icon = evidenceIcon[e.kind]
-            return (
-              <tr key={e.id} className="transition-colors hover:bg-white/[0.02]">
-                <td className="py-2.5 pr-2 pl-4 font-mono text-[11px] whitespace-nowrap text-ink-muted">
-                  {e.ref}
-                </td>
-                <td className="px-2 py-2.5">
-                  <div className="flex items-center gap-2.5">
-                    <span
-                      className="grid size-7 shrink-0 place-items-center rounded-md bg-white/[0.04] text-cyan/80 ring-1 ring-white/[0.06]"
-                      title={e.kind}
-                    >
-                      <Icon size={14} />
-                    </span>
-                    <span className="min-w-0">
-                      <span className="block truncate font-medium text-ink">{e.title}</span>
-                      <span className="block truncate text-[11px] text-ink-faint">{e.source}</span>
-                    </span>
-                  </div>
-                </td>
-                <td className="num px-2 py-2.5 whitespace-nowrap text-ink-muted">
-                  {dateTime(e.capturedAt)}
-                </td>
-                <td className="px-2 py-2.5">
-                  <button
-                    type="button"
-                    onClick={() => copy(e)}
-                    className="group inline-flex items-center gap-1.5 rounded px-1 font-mono text-[11px] text-ink-muted hover:text-ink"
-                    aria-label={`Copy SHA-256 of ${e.ref}`}
-                    title={e.sha256}
-                  >
-                    {e.sha256.slice(0, 8)}…{e.sha256.slice(-6)}
-                    {copied === e.id ? (
-                      <Check size={12} className="text-green" />
-                    ) : (
-                      <Copy size={12} className="text-ink-faint group-hover:text-cyan" />
-                    )}
-                  </button>
-                </td>
-                <td className="num px-2 py-2.5 text-right text-ink-2">{e.custodyEvents}</td>
-                <td className="py-2.5 pr-4 pl-2">
-                  <MarkingTag marking={e.marking} />
-                </td>
-              </tr>
-            )
-          })}
-        </tbody>
-      </table>
+      {evidence.length === 0 ? (
+        <EmptyState icon={FileSearch} title="No evidence attached yet" />
+      ) : (
+        <EvidenceList evidence={evidence} />
+      )}
     </Panel>
   )
 }

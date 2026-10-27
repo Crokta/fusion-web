@@ -10,8 +10,10 @@ import {
   type SearchHitDto,
   type SourceDto,
   type StoryDto,
+  type TriageItemDto,
   type WallPublicationDto,
   type WallStateDto,
+  fromPriority,
   fromWallState,
   shortId,
   toAlert,
@@ -24,6 +26,7 @@ import {
   toReviewItem,
   toSearchResponse,
   toStoryGroups,
+  toTriageItem,
   toWallPublication,
   toWallState,
   toWatchFloor,
@@ -144,6 +147,40 @@ export const httpApi: FusionApi = {
   },
   sendToTriage: async (id) => {
     await request(`/story-groups/${enc(id)}/send-to-triage`, { method: 'POST' })
+  },
+
+  triage: async (p) => {
+    const page = await request<PageDto<TriageItemDto>>('/triage', {
+      query: { status: p?.status, limit: '100' },
+    })
+    // Headlines come from intake and originals from evidence; either missing still lists the item.
+    const items = await Promise.all(
+      page.items.map(async (t) => {
+        const [story, evidence] = await Promise.all([
+          t.storyId
+            ? request<StoryDto>(`/stories/${enc(t.storyId)}`).catch(() => null)
+            : Promise.resolve(null),
+          Promise.all(
+            t.evidenceIds.map((id) =>
+              request<EvidenceDto>(`/evidence/${enc(id)}`).catch(() => null),
+            ),
+          ).then((list) => list.filter((e): e is EvidenceDto => e !== null)),
+        ])
+        return { t, story, evidence }
+      }),
+    )
+    const name = await nameOf(page.items.map((t) => t.promotedBy))
+    return {
+      items: items.map(({ t, story, evidence }) => toTriageItem(t, story, evidence, name)),
+      nextCursor: page.nextCursor,
+    }
+  },
+  promoteTriage: async (id, input) => {
+    const c = await request<CaseDto>(`/triage/${enc(id)}/promote`, {
+      method: 'POST',
+      body: { ...input, priority: fromPriority(input.priority) },
+    })
+    return { caseId: c.id }
   },
 
   alerts: async (p) => {

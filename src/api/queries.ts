@@ -4,8 +4,10 @@ import type {
   Alert,
   CaseState,
   Page,
+  PromoteInput,
   ReviewDecision,
   SearchKind,
+  TriageStatus,
   WallContentKey,
   WallPresetKey,
   WallState,
@@ -20,6 +22,7 @@ export const qk = {
   watchFloor: ['watch-floor'] as const,
   feed: (channel?: string) => ['feed', channel ?? 'all'] as const,
   alerts: (status?: string) => ['alerts', status ?? 'all'] as const,
+  triage: (status?: string) => ['triage', status ?? 'all'] as const,
   cases: (state?: string, q?: string) => ['cases', state ?? 'all', q ?? ''] as const,
   case: (id: string) => ['case', id] as const,
   reviews: ['reviews'] as const,
@@ -67,6 +70,26 @@ export function useAcknowledgeAlert() {
     onError: (_e, _id, ctx) => ctx?.snapshots.forEach(([key, data]) => qc.setQueryData(key, data)),
     onSettled: () => {
       qc.invalidateQueries({ queryKey: ['alerts'] })
+      qc.invalidateQueries({ queryKey: qk.watchFloor })
+    },
+  })
+}
+
+// Preservation lands a few seconds after an item arrives, so the queue polls while it is open.
+export const useTriage = (status?: TriageStatus) =>
+  useQuery({
+    queryKey: qk.triage(status),
+    queryFn: () => api.triage({ status }),
+    refetchInterval: 15_000,
+  })
+
+export function usePromoteTriage() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (v: { id: string; input: PromoteInput }) => api.promoteTriage(v.id, v.input),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['triage'] })
+      qc.invalidateQueries({ queryKey: ['cases'] })
       qc.invalidateQueries({ queryKey: qk.watchFloor })
     },
   })

@@ -24,6 +24,7 @@ const clone = <T>(v: T): T => structuredClone(v)
 const db = {
   cases: clone(fx.caseSummaries),
   feed: clone(fx.storyGroups),
+  triage: clone(fx.triageItems),
   alerts: clone(fx.alerts),
   reviews: clone(fx.reviews),
   approvals: clone(fx.approvals),
@@ -202,6 +203,41 @@ export const mockApi: FusionApi = {
   sendToTriage: (id) =>
     delay(() => {
       audit('allowed', 'story.send-to-triage', id)
+    }),
+
+  triage: (p) =>
+    delay(() => {
+      const items = p?.status ? db.triage.filter((t) => t.status === p.status) : db.triage
+      return { items, nextCursor: null, total: items.length }
+    }),
+  promoteTriage: (id, input) =>
+    delay(() => {
+      requireRole(['analyst', 'supervisor'], 'Promoting from triage')
+      const t = db.triage.find((x) => x.id === id)
+      if (!t) refuse('not_found', 'Triage item not found', 404)
+      if (t.status !== 'pending') refuse('conflict', 'This item has already left triage', 409)
+      const caseId = `case-${Date.now()}`
+      t.status = 'promoted'
+      t.caseId = caseId
+      t.promotedAt = new Date().toISOString()
+      t.promotedBy = devName()
+      db.cases.unshift({
+        id: caseId,
+        ref: `CASE-2026-${String(db.cases.length + 1).padStart(4, '0')}`,
+        title: input.title,
+        state: 'open',
+        priority: input.priority,
+        category: 'Unclassified',
+        place: '—',
+        owner: { id: input.ownerId, name: devName() },
+        deadline: input.deadline,
+        updatedAt: new Date().toISOString(),
+        signalCount: 0,
+        evidenceCount: t.evidence.length,
+        marking: 'OFFICIAL',
+      })
+      audit('allowed', 'triage.promote', `${t.id} → ${caseId}`)
+      return { caseId }
     }),
 
   alerts: (p) =>
