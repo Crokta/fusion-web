@@ -116,8 +116,7 @@ export const NAV: NavGroup[] = [
         to: '/collection',
         label: 'Collection',
         icon: Archive,
-        soon: true,
-        description: 'Source register, requirements, collection queries and the egress allow-list.',
+        description: 'Source register: propose, approve, suspend, reinstate and edit sources.',
       },
       {
         to: '/live-feeds',

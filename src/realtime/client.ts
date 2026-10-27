@@ -49,7 +49,10 @@ const str = (v: unknown) => (typeof v === 'string' ? v : undefined)
  * Builds the typed event from a hub envelope when its payload carries enough to show
  * something; otherwise null, and the provider's refetch brings the full resource.
  */
-export function fromServer<E extends LiveEventName>(event: E, env: ServerEnvelope): LiveEventMap[E] | null {
+export function fromServer<E extends LiveEventName>(
+  event: E,
+  env: ServerEnvelope,
+): LiveEventMap[E] | null {
   const d = env.data ?? {}
   switch (event) {
     case 'job.progress':

@@ -9,6 +9,7 @@ import {
   type PolicyDto,
   type SearchHitDto,
   type SourceDto,
+  type SourceViewDto,
   type StoryDto,
   type TriageItemDto,
   type WallPublicationDto,
@@ -25,6 +26,7 @@ import {
   toPolicy,
   toReviewItem,
   toSearchResponse,
+  toSourceRecord,
   toStoryGroups,
   toTriageItem,
   toWallPublication,
@@ -125,6 +127,11 @@ async function nameOf(ids: (string | null | undefined)[]): Promise<NameOf> {
 /** Search hits from the last search, so an item can open without an item endpoint. */
 const lastHits = new Map<string, SearchHit>()
 
+async function sourceCall(path: string, opts: RequestOptions) {
+  const s = await request<SourceViewDto>(path, opts)
+  return toSourceRecord(s, await nameOf([s.proposedBy, s.approvedBy]))
+}
+
 async function fetchCase(id: string) {
   return send<CaseDto>(`/cases/${enc(id)}`)
 }
@@ -148,6 +155,23 @@ export const httpApi: FusionApi = {
   sendToTriage: async (id) => {
     await request(`/story-groups/${enc(id)}/send-to-triage`, { method: 'POST' })
   },
+
+  sources: async (p) => {
+    const page = await request<PageDto<SourceViewDto>>('/sources', {
+      query: { status: p?.status, limit: '200' },
+    })
+    const name = await nameOf(page.items.flatMap((s) => [s.proposedBy, s.approvedBy]))
+    return { items: page.items.map((s) => toSourceRecord(s, name)), nextCursor: page.nextCursor }
+  },
+  proposeSource: (input) => sourceCall('/sources', { method: 'POST', body: input }),
+  editSource: (id, input, etag) =>
+    sourceCall(`/sources/${enc(id)}`, { method: 'PUT', body: input, ifMatch: etag }),
+  approveSource: (id, etag) =>
+    sourceCall(`/sources/${enc(id)}/approve`, { method: 'POST', ifMatch: etag }),
+  suspendSource: (id, reason, etag) =>
+    sourceCall(`/sources/${enc(id)}/suspend`, { method: 'POST', body: { reason }, ifMatch: etag }),
+  reinstateSource: (id, etag) =>
+    sourceCall(`/sources/${enc(id)}/reinstate`, { method: 'POST', ifMatch: etag }),
 
   triage: async (p) => {
     const page = await request<PageDto<TriageItemDto>>('/triage', {

@@ -28,7 +28,7 @@ import {
   inputClass,
 } from '@/components/ui'
 import { cn } from '@/lib/cn'
-import { relative } from '@/lib/format'
+import { since } from '@/lib/format'
 import { useNow } from '@/lib/hooks'
 import { EvidenceList } from '@/features/cases/EvidenceList'
 
@@ -124,7 +124,7 @@ export function TriagePage() {
                       <div className="min-w-0 flex-1">
                         <p className="truncate text-[13px] font-medium text-ink">{t.headline}</p>
                         <p className="mt-0.5 truncate text-[11.5px] text-ink-faint">
-                          {t.outlet} · sent {relative(t.sentAt, now)}
+                          {t.outlet} · sent {since(t.sentAt, now)}
                         </p>
                       </div>
                       <PreservationBadge item={t} />

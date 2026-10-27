@@ -10,6 +10,10 @@ export function relative(iso: string, now = Date.now()): string {
   return rtf.format(Math.round(diff / 86400), 'day')
 }
 
+/** `relative` for something that already happened: a server clock a little ahead never makes it "in a moment". */
+export const since = (iso: string, now = Date.now()) =>
+  relative(iso, Math.max(now, new Date(iso).getTime()))
+
 export const clock = (iso: string | Date) =>
   new Date(iso).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })
 

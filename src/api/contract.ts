@@ -14,6 +14,9 @@ import type {
   ReviewItem,
   SearchKind,
   SearchResponse,
+  SourceInput,
+  SourceRecord,
+  SourceStatus,
   StoryGroup,
   TriageItem,
   TriageStatus,
@@ -39,6 +42,14 @@ export interface FusionApi {
 
   alerts(params?: { status?: string }): Promise<Page<Alert>>
   acknowledgeAlert(id: string): Promise<Alert>
+
+  sources(params?: { status?: SourceStatus }): Promise<Page<SourceRecord>>
+  proposeSource(input: SourceInput): Promise<SourceRecord>
+  /** A new address or kind sends the source back for someone else's approval. */
+  editSource(id: string, input: SourceInput, etag: string): Promise<SourceRecord>
+  approveSource(id: string, etag: string): Promise<SourceRecord>
+  suspendSource(id: string, reason: string, etag: string): Promise<SourceRecord>
+  reinstateSource(id: string, etag: string): Promise<SourceRecord>
 
   triage(params?: { status?: TriageStatus }): Promise<Page<TriageItem>>
   /** Opens a case from the item; resolves to the new case's id. */

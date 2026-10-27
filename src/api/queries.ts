@@ -7,6 +7,8 @@ import type {
   PromoteInput,
   ReviewDecision,
   SearchKind,
+  SourceInput,
+  SourceStatus,
   TriageStatus,
   WallContentKey,
   WallPresetKey,
@@ -22,6 +24,7 @@ export const qk = {
   watchFloor: ['watch-floor'] as const,
   feed: (channel?: string) => ['feed', channel ?? 'all'] as const,
   alerts: (status?: string) => ['alerts', status ?? 'all'] as const,
+  sources: (status?: string) => ['sources', status ?? 'all'] as const,
   triage: (status?: string) => ['triage', status ?? 'all'] as const,
   cases: (state?: string, q?: string) => ['cases', state ?? 'all', q ?? ''] as const,
   case: (id: string) => ['case', id] as const,
@@ -71,6 +74,41 @@ export function useAcknowledgeAlert() {
     onSettled: () => {
       qc.invalidateQueries({ queryKey: ['alerts'] })
       qc.invalidateQueries({ queryKey: qk.watchFloor })
+    },
+  })
+}
+
+export const useSources = (status?: SourceStatus) =>
+  useQuery({ queryKey: qk.sources(status), queryFn: () => api.sources({ status }) })
+
+export type SourceAction =
+  | { kind: 'propose'; input: SourceInput }
+  | { kind: 'edit'; id: string; input: SourceInput; etag: string }
+  | { kind: 'approve' | 'reinstate'; id: string; etag: string }
+  | { kind: 'suspend'; id: string; reason: string; etag: string }
+
+/** Every change to the register; each refreshes the list and the watch floor's source health. */
+export function useSourceAction() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (a: SourceAction) => {
+      switch (a.kind) {
+        case 'propose':
+          return api.proposeSource(a.input)
+        case 'edit':
+          return api.editSource(a.id, a.input, a.etag)
+        case 'approve':
+          return api.approveSource(a.id, a.etag)
+        case 'reinstate':
+          return api.reinstateSource(a.id, a.etag)
+        case 'suspend':
+          return api.suspendSource(a.id, a.reason, a.etag)
+      }
+    },
+    onSettled: () => {
+      qc.invalidateQueries({ queryKey: ['sources'] })
+      qc.invalidateQueries({ queryKey: qk.watchFloor })
+      qc.invalidateQueries({ queryKey: ['audit'] })
     },
   })
 }

@@ -13,6 +13,7 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as SectionRouteImport } from './routes/$section'
 import { Route as AdminRouteImport } from './routes/admin'
 import { Route as ApprovalsRouteImport } from './routes/approvals'
+import { Route as CollectionRouteImport } from './routes/collection'
 import { Route as FeedRouteImport } from './routes/feed'
 import { Route as ReviewRouteImport } from './routes/review'
 import { Route as SearchRouteImport } from './routes/search'
@@ -39,6 +40,11 @@ const AdminRoute = AdminRouteImport.update({
 const ApprovalsRoute = ApprovalsRouteImport.update({
   id: '/approvals',
   path: '/approvals',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const CollectionRoute = CollectionRouteImport.update({
+  id: '/collection',
+  path: '/collection',
   getParentRoute: () => rootRouteImport,
 } as any)
 const FeedRoute = FeedRouteImport.update({
@@ -82,6 +88,7 @@ export interface FileRoutesByFullPath {
   '/$section': typeof SectionRoute
   '/admin': typeof AdminRoute
   '/approvals': typeof ApprovalsRoute
+  '/collection': typeof CollectionRoute
   '/feed': typeof FeedRoute
   '/review': typeof ReviewRoute
   '/search': typeof SearchRoute
@@ -95,6 +102,7 @@ export interface FileRoutesByTo {
   '/$section': typeof SectionRoute
   '/admin': typeof AdminRoute
   '/approvals': typeof ApprovalsRoute
+  '/collection': typeof CollectionRoute
   '/feed': typeof FeedRoute
   '/review': typeof ReviewRoute
   '/search': typeof SearchRoute
@@ -109,6 +117,7 @@ export interface FileRoutesById {
   '/$section': typeof SectionRoute
   '/admin': typeof AdminRoute
   '/approvals': typeof ApprovalsRoute
+  '/collection': typeof CollectionRoute
   '/feed': typeof FeedRoute
   '/review': typeof ReviewRoute
   '/search': typeof SearchRoute
@@ -124,6 +133,7 @@ export interface FileRouteTypes {
     | '/$section'
     | '/admin'
     | '/approvals'
+    | '/collection'
     | '/feed'
     | '/review'
     | '/search'
@@ -137,6 +147,7 @@ export interface FileRouteTypes {
     | '/$section'
     | '/admin'
     | '/approvals'
+    | '/collection'
     | '/feed'
     | '/review'
     | '/search'
@@ -150,6 +161,7 @@ export interface FileRouteTypes {
     | '/$section'
     | '/admin'
     | '/approvals'
+    | '/collection'
     | '/feed'
     | '/review'
     | '/search'
@@ -164,6 +176,7 @@ export interface RootRouteChildren {
   SectionRoute: typeof SectionRoute
   AdminRoute: typeof AdminRoute
   ApprovalsRoute: typeof ApprovalsRoute
+  CollectionRoute: typeof CollectionRoute
   FeedRoute: typeof FeedRoute
   ReviewRoute: typeof ReviewRoute
   SearchRoute: typeof SearchRoute
@@ -201,6 +214,13 @@ declare module '@tanstack/react-router' {
       path: '/approvals'
       fullPath: '/approvals'
       preLoaderRoute: typeof ApprovalsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/collection': {
+      id: '/collection'
+      path: '/collection'
+      fullPath: '/collection'
+      preLoaderRoute: typeof CollectionRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/feed': {
@@ -260,6 +280,7 @@ const rootRouteChildren: RootRouteChildren = {
   SectionRoute: SectionRoute,
   AdminRoute: AdminRoute,
   ApprovalsRoute: ApprovalsRoute,
+  CollectionRoute: CollectionRoute,
   FeedRoute: FeedRoute,
   ReviewRoute: ReviewRoute,
   SearchRoute: SearchRoute,

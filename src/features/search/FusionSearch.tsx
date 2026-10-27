@@ -239,7 +239,7 @@ function ResultCard({
         <span className={cn('text-[10.5px] font-semibold tracking-[0.1em] uppercase', meta.tone)}>
           {hit.kind}
         </span>
-        <span className="font-mono text-[10.5px] text-ink-faint">{hit.id}</span>
+        <span className="truncate text-[11px] text-ink-faint">{hit.source}</span>
         <span className="flex-1" />
         <MarkingTag marking={hit.marking} />
       </div>
@@ -252,9 +252,11 @@ function ResultCard({
           {hit.title}
         </button>
       </h3>
-      <p className="mt-1.5 line-clamp-2 text-[12.5px] leading-relaxed text-ink-muted">
-        {hit.summary}
-      </p>
+      {(hit.highlight ?? hit.summary) && (
+        <p className="mt-1.5 line-clamp-2 text-[12.5px] leading-relaxed text-ink-muted">
+          <Highlighted text={hit.highlight ?? hit.summary} />
+        </p>
+      )}
       <div className="relative z-10 mt-auto flex flex-wrap items-center gap-1.5 pt-3.5 text-[11px]">
         <button
           type="button"
@@ -305,5 +307,26 @@ export function FusionSearchOverlay() {
         <SearchExperience initialQuery={searchQuery ?? ''} onClose={closeSearch} autoFocus />
       )}
     </dialog>
+  )
+}
+
+/**
+ * The index marks matched words with <mark>…</mark>. Split on the tags and render each part as
+ * text, so nothing else in the snippet is ever treated as markup.
+ */
+function Highlighted({ text }: { text: string }) {
+  const parts = text.split(/(<mark>.*?<\/mark>)/g)
+  return (
+    <>
+      {parts.map((part, i) =>
+        part.startsWith('<mark>') ? (
+          <mark key={i} className="rounded-[3px] bg-cyan/15 px-0.5 text-ink">
+            {part.slice(6, -7)}
+          </mark>
+        ) : (
+          part
+        ),
+      )}
+    </>
   )
 }

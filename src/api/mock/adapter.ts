@@ -8,6 +8,7 @@ import type {
   Me,
   Role,
   SearchKind,
+  SourceRecord,
   StoryGroup,
   WallState,
 } from '../types'
@@ -25,6 +26,7 @@ const db = {
   cases: clone(fx.caseSummaries),
   feed: clone(fx.storyGroups),
   triage: clone(fx.triageItems),
+  sources: clone(fx.sources),
   alerts: clone(fx.alerts),
   reviews: clone(fx.reviews),
   approvals: clone(fx.approvals),
@@ -87,6 +89,48 @@ function audit(outcome: 'allowed' | 'refused', action: string, target: string, p
 }
 
 const devName = () => (session.getUserId() === fx.DEV_USER_ID ? fx.people.dirk.name : 'You')
+
+const me = () => ({ id: session.getUserId() ?? fx.DEV_USER_ID, name: devName() })
+
+function sourceAt(id: string, etag: string) {
+  const s = db.sources.find((x) => x.id === id)
+  if (!s) refuse('not_found', 'No such source.', 404)
+  if (s.etag !== etag) refuse('precondition_failed', 'Someone changed this source first.', 412)
+  return s
+}
+
+function bumpSource(s: SourceRecord) {
+  s.etag = `"v${Number(s.etag.replace(/\D/g, '')) + 1}"`
+}
+
+/** Approval and reinstatement are both approvals: never by the person who proposed it. */
+function approveOrReinstate(
+  id: string,
+  etag: string,
+  from: SourceRecord['status'],
+  action: string,
+): SourceRecord {
+  requireRole(['supervisor', 'centre_lead'], 'Approving a source')
+  const s = sourceAt(id, etag)
+  if (s.status !== from)
+    refuse(
+      'conflict',
+      `Only a ${from} source can be ${action === 'source.approve' ? 'approved' : 'reinstated'}.`,
+      409,
+    )
+  if (s.proposedBy.id === me().id)
+    refuse('self_approval_forbidden', 'You cannot approve a source you proposed.')
+  Object.assign(s, {
+    status: 'approved',
+    approvedBy: me(),
+    approvedAt: new Date().toISOString(),
+    suspendedReason: null,
+    suspendedAt: null,
+  })
+  bumpSource(s)
+  audit('allowed', action, s.name)
+  return s
+}
 
 function bumpWall(next: WallState): WallState {
   db.wall = {
@@ -203,6 +247,71 @@ export const mockApi: FusionApi = {
   sendToTriage: (id) =>
     delay(() => {
       audit('allowed', 'story.send-to-triage', id)
+    }),
+
+  sources: (p) =>
+    delay(() => {
+      const items = p?.status ? db.sources.filter((s) => s.status === p.status) : db.sources
+      return { items, nextCursor: null, total: items.length }
+    }),
+  proposeSource: (input) =>
+    delay(() => {
+      requireRole(['analyst', 'supervisor'], 'Proposing a source')
+      const s: SourceRecord = {
+        id: `src-${Date.now()}`,
+        ...input,
+        host: new URL(input.url).hostname.replace(/^www\./, ''),
+        status: 'proposed',
+        proposedBy: me(),
+        proposedAt: new Date().toISOString(),
+        approvedBy: null,
+        approvedAt: null,
+        suspendedReason: null,
+        suspendedAt: null,
+        etag: '"v0"',
+      }
+      db.sources.unshift(s)
+      audit('allowed', 'source.propose', s.name)
+      return s
+    }),
+  editSource: (id, input, etag) =>
+    delay(() => {
+      requireRole(['analyst', 'supervisor'], 'Editing a source')
+      const s = sourceAt(id, etag)
+      const reAddressed = input.url !== s.url || input.kind !== s.kind
+      Object.assign(s, input, { host: new URL(input.url).hostname.replace(/^www\./, '') })
+      if (reAddressed)
+        Object.assign(s, {
+          status: 'proposed',
+          proposedBy: me(),
+          proposedAt: new Date().toISOString(),
+          approvedBy: null,
+          approvedAt: null,
+          suspendedReason: null,
+          suspendedAt: null,
+        })
+      bumpSource(s)
+      audit('allowed', 'source.edit', s.name)
+      return s
+    }),
+  approveSource: (id, etag) =>
+    delay(() => approveOrReinstate(id, etag, 'proposed', 'source.approve')),
+  reinstateSource: (id, etag) =>
+    delay(() => approveOrReinstate(id, etag, 'suspended', 'source.reinstate')),
+  suspendSource: (id, reason, etag) =>
+    delay(() => {
+      requireRole(['supervisor', 'centre_lead'], 'Suspending a source')
+      const s = sourceAt(id, etag)
+      if (s.status !== 'approved')
+        refuse('conflict', 'Only an approved source can be suspended.', 409)
+      Object.assign(s, {
+        status: 'suspended',
+        suspendedReason: reason,
+        suspendedAt: new Date().toISOString(),
+      })
+      bumpSource(s)
+      audit('allowed', 'source.suspend', s.name, reason)
+      return s
     }),
 
   triage: (p) =>

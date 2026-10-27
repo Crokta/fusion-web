@@ -27,6 +27,10 @@ import type {
   SearchKind,
   SearchResponse,
   SourceHealth,
+  SourceKind,
+  SourceRecord,
+  SourceStatus,
+  Reliability,
   Story,
   StoryGroup,
   TimelineEntry,
@@ -207,6 +211,20 @@ export interface SourceDto {
   status: string
 }
 
+/** intake's SourceView. */
+export interface SourceViewDto extends SourceDto {
+  kind: string
+  url: string
+  reliability: string | null
+  proposedBy: string
+  proposedAt: string
+  approvedBy: string | null
+  approvedAt: string | null
+  suspendedReason: string | null
+  suspendedAt: string | null
+  version: number
+}
+
 export interface SearchHitDto {
   type: string
   id: string
@@ -214,6 +232,10 @@ export interface SearchHitDto {
   title: string
   at: string
   score: number
+  /** The best-matching passage, matched words in <mark>; absent before full-text indexing. */
+  snippet?: string | null
+  /** Where it came from: an outlet host for a story. */
+  source?: string | null
 }
 
 export interface WallStateDto extends Omit<WallState, 'revision' | 'controller'> {
@@ -612,6 +634,34 @@ export function toSourceHealth(s: SourceDto): SourceHealth {
   }
 }
 
+const SOURCE_KINDS: readonly SourceKind[] = ['feed', 'site', 'social', 'official']
+const SOURCE_STATUSES: readonly SourceStatus[] = ['proposed', 'approved', 'suspended']
+const GRADES: readonly Reliability[] = ['A', 'B', 'C', 'D', 'E', 'F']
+
+export function toSourceRecord(s: SourceViewDto, name: NameOf): SourceRecord {
+  return {
+    id: s.id,
+    name: s.name,
+    kind: SOURCE_KINDS.includes(s.kind as SourceKind) ? (s.kind as SourceKind) : 'site',
+    url: s.url,
+    host: hostOf(s.url),
+    reliability: GRADES.includes(s.reliability as Reliability)
+      ? (s.reliability as Reliability)
+      : null,
+    // An unknown status is shown as proposed: never as collecting when we can't tell.
+    status: SOURCE_STATUSES.includes(s.status as SourceStatus)
+      ? (s.status as SourceStatus)
+      : 'proposed',
+    proposedBy: { id: s.proposedBy, name: name(s.proposedBy) },
+    proposedAt: s.proposedAt,
+    approvedBy: s.approvedBy ? { id: s.approvedBy, name: name(s.approvedBy) } : null,
+    approvedAt: s.approvedAt,
+    suspendedReason: s.suspendedReason,
+    suspendedAt: s.suspendedAt,
+    etag: `"v${s.version}"`,
+  }
+}
+
 export function toWatchFloor(raw: {
   kpis: WatchFloorSummary['kpis']
   sources: SourceDto[]
@@ -634,14 +684,17 @@ const KIND_OF: Record<string, SearchKind> = {
   alert: 'alert',
 }
 
+const MARK = /<\/?mark>/g
+
 export function toSearchHit(h: SearchHitDto): SearchHit {
   return {
     id: h.id,
     kind: KIND_OF[h.type] ?? 'news',
     title: h.title,
-    summary: '',
+    summary: h.snippet?.replace(MARK, '') ?? '',
+    highlight: h.snippet ?? undefined,
     place: '—',
-    source: h.type,
+    source: h.source ?? h.type,
     caseRef: h.caseId ? `CASE ${shortId(h.caseId)}` : undefined,
     at: h.at,
     marking: DEFAULT_MARKING,

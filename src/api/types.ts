@@ -230,6 +230,38 @@ export interface CaseDetail extends CaseSummary {
   etag: string
 }
 
+// ---------------------------------------------------------------- sources
+
+export type SourceKind = 'feed' | 'site' | 'social' | 'official'
+export type SourceStatus = 'proposed' | 'approved' | 'suspended'
+/** Admiralty-style source reliability, A (reliable) to F (cannot be judged). */
+export type Reliability = 'A' | 'B' | 'C' | 'D' | 'E' | 'F'
+
+/** An entry in intake's source register: only approved sources are collected from. */
+export interface SourceRecord {
+  id: string
+  name: string
+  kind: SourceKind
+  url: string
+  host: string
+  reliability: Reliability | null
+  status: SourceStatus
+  proposedBy: { id: string; name: string }
+  proposedAt: string
+  approvedBy: { id: string; name: string } | null
+  approvedAt: string | null
+  suspendedReason: string | null
+  suspendedAt: string | null
+  etag: string
+}
+
+export interface SourceInput {
+  name: string
+  kind: SourceKind
+  url: string
+  reliability: Reliability | null
+}
+
 // ---------------------------------------------------------------- triage
 
 export type TriageStatus = 'pending' | 'promoted' | 'dismissed'
@@ -339,6 +371,8 @@ export interface SearchHit {
   kind: SearchKind
   title: string
   summary: string
+  /** The summary with the matched words wrapped in <mark>…</mark>, as the index returns it. */
+  highlight?: string
   place: string
   source: string
   caseRef?: string

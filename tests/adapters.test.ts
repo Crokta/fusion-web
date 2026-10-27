@@ -4,6 +4,7 @@ import {
   type AuditEntryDto,
   type CaseDto,
   type EvidenceDto,
+  type SourceViewDto,
   type StoryDto,
   type TriageItemDto,
   evidenceLabel,
@@ -15,6 +16,8 @@ import {
   toCaseDetail,
   toCaseSummary,
   toPolicy,
+  toSearchHit,
+  toSourceRecord,
   toStoryGroups,
   toTriageItem,
   toWallState,
@@ -347,5 +350,76 @@ describe('triage and evidence', () => {
   it("speaks casework's word for a normal priority", () => {
     expect(fromPriority('medium')).toBe('normal')
     expect(fromPriority('high')).toBe('high')
+  })
+})
+
+describe('search', () => {
+  it('keeps the highlighted passage and shows the outlet as the source', () => {
+    const hit = toSearchHit({
+      type: 'story',
+      id: 's1',
+      caseId: null,
+      title: 'Kidnappers attack Kaduna estate, abduct 6 residents',
+      at: '2026-10-27T17:00:00Z',
+      score: 7.1,
+      snippet: 'Gunmen stormed a residential estate and <mark>abducted</mark> six residents',
+      source: 'dailytrust.com',
+    })
+    expect(hit).toMatchObject({
+      kind: 'news',
+      source: 'dailytrust.com',
+      summary: 'Gunmen stormed a residential estate and abducted six residents',
+      highlight: 'Gunmen stormed a residential estate and <mark>abducted</mark> six residents',
+    })
+  })
+
+  it('reads a hit from before full-text indexing', () => {
+    const hit = toSearchHit({
+      type: 'case',
+      id: 'c1',
+      caseId: null,
+      title: 'CASE-1',
+      at: '2026-10-27T17:00:00Z',
+      score: 1,
+    })
+    expect([hit.summary, hit.highlight, hit.source]).toEqual(['', undefined, 'case'])
+  })
+})
+
+describe('sources', () => {
+  // Shape as intake returned it for Daily Trust in the live check (2026-10-27).
+  const dto: SourceViewDto = {
+    id: '01a17d80-b29a-7c95-bc97-8636ecf450e8',
+    name: 'Daily Trust',
+    kind: 'site',
+    url: 'https://www.dailytrust.com',
+    reliability: 'B',
+    status: 'approved',
+    proposedBy: 'u-ada',
+    proposedAt: '2026-10-27T10:00:00Z',
+    approvedBy: 'u-rex',
+    approvedAt: '2026-10-27T10:05:00Z',
+    suspendedReason: null,
+    suspendedAt: null,
+    version: 4,
+  }
+
+  it('names the people and keeps the version for If-Match', () => {
+    expect(toSourceRecord(dto, name)).toMatchObject({
+      host: 'dailytrust.com',
+      reliability: 'B',
+      status: 'approved',
+      proposedBy: { id: 'u-ada', name: 'Ada Analyst' },
+      approvedBy: { id: 'u-rex', name: 'Rex Reviewer' },
+      etag: '"v4"',
+    })
+  })
+
+  it('never shows a source it cannot read as collecting', () => {
+    const odd = toSourceRecord(
+      { ...dto, status: 'archived', kind: 'podcast', reliability: 'Z' },
+      name,
+    )
+    expect([odd.status, odd.kind, odd.reliability]).toEqual(['proposed', 'site', null])
   })
 })

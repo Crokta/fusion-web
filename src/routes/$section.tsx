@@ -10,7 +10,6 @@ const EPICS: Record<string, string> = {
   network: 'E23 · Link analysis',
   gazetteer: 'E21 · Geo and gazetteer',
   names: 'E24 · Names of interest',
-  collection: 'E15 · Sources, requirements and collection',
   'live-feeds': 'E36 · Wall inputs and live sources',
 }
 
