@@ -242,7 +242,7 @@ export function WallPage() {
         eyebrow="Command wall · 4 × 4 · 16 × FHD · 7680 × 4320"
         title={
           <span className="flex items-center gap-3">
-            Mini Fusion Centre Wall
+            Homeland Fusion Centre Wall
             {state && (
               <Badge tone={state.preset === 'custom' ? 'amber' : 'cyan'} className="translate-y-px">
                 {state.preset === 'custom'

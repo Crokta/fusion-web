@@ -1,5 +1,8 @@
 import type {
   Alert,
+  Brief,
+  BriefSentence,
+  SupportCheck,
   Approval,
   AuditEvent,
   CaseDetail,
@@ -76,6 +79,20 @@ export interface FusionApi {
   recordStatement(id: string, input: StatementInput): Promise<CaseDetail>
   recordClaim(id: string, input: { text: string; attributedTo: string }): Promise<CaseDetail>
   setClaimOutcome(caseId: string, claimId: string, input: ClaimOutcomeInput): Promise<CaseDetail>
+
+  // Briefs (reporting). Drafting starts from a case's approved findings.
+  briefs(params?: { caseId?: string }): Promise<Page<Brief>>
+  brief(id: string): Promise<Brief>
+  createBrief(caseId: string): Promise<Brief>
+  redraftBrief(
+    id: string,
+    input: { title: string; sentences: BriefSentence[] },
+    etag: string,
+  ): Promise<Brief>
+  supportCheck(id: string): Promise<SupportCheck>
+  releaseBrief(id: string, etag: string): Promise<Brief>
+  /** The PDF: the stored file once released, else a DRAFT-marked preview. */
+  briefPdf(id: string, version?: number): Promise<Blob>
 
   reviews(): Promise<Page<ReviewItem>>
   decideReview(caseId: string, decision: ReviewDecision, comment: string): Promise<void>

@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from './index'
 import type {
   Alert,
+  BriefSentence,
   CaseState,
   ClaimOutcomeInput,
   FindingInput,
@@ -27,6 +28,9 @@ export const qk = {
   watchFloor: ['watch-floor'] as const,
   feed: (channel?: string) => ['feed', channel ?? 'all'] as const,
   alerts: (status?: string) => ['alerts', status ?? 'all'] as const,
+  briefs: (caseId?: string) => ['briefs', caseId ?? 'all'] as const,
+  brief: (id: string) => ['brief', id] as const,
+  supportCheck: (id: string) => ['brief', id, 'support-check'] as const,
   sources: (status?: string) => ['sources', status ?? 'all'] as const,
   triage: (status?: string) => ['triage', status ?? 'all'] as const,
   cases: (state?: string, q?: string) => ['cases', state ?? 'all', q ?? ''] as const,
@@ -77,6 +81,52 @@ export function useAcknowledgeAlert() {
     onSettled: () => {
       qc.invalidateQueries({ queryKey: ['alerts'] })
       qc.invalidateQueries({ queryKey: qk.watchFloor })
+    },
+  })
+}
+
+export const useBriefs = (caseId?: string) =>
+  useQuery({ queryKey: qk.briefs(caseId), queryFn: () => api.briefs({ caseId }) })
+
+export const useBrief = (id: string) =>
+  useQuery({ queryKey: qk.brief(id), queryFn: () => api.brief(id), enabled: !!id })
+
+export const useSupportCheck = (id: string) =>
+  useQuery({ queryKey: qk.supportCheck(id), queryFn: () => api.supportCheck(id), enabled: !!id })
+
+export function useCreateBrief() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (caseId: string) => api.createBrief(caseId),
+    onSuccess: (b) => {
+      qc.setQueryData(qk.brief(b.id), b)
+      qc.invalidateQueries({ queryKey: ['briefs'] })
+    },
+  })
+}
+
+export type BriefAction =
+  | { kind: 'redraft'; title: string; sentences: BriefSentence[]; etag: string }
+  | { kind: 'release'; etag: string }
+
+export function useBriefAction(id: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (a: BriefAction) =>
+      a.kind === 'redraft'
+        ? api.redraftBrief(id, { title: a.title, sentences: a.sentences }, a.etag)
+        : api.releaseBrief(id, a.etag),
+    onSuccess: (b) => {
+      qc.setQueryData(qk.brief(id), b)
+      qc.invalidateQueries({ queryKey: ['briefs'] })
+      qc.invalidateQueries({ queryKey: qk.supportCheck(id) })
+      // A release moves the case to Released once casework has the event.
+      qc.invalidateQueries({ queryKey: qk.case(b.caseId) })
+      qc.invalidateQueries({ queryKey: ['cases'] })
+    },
+    onError: () => {
+      qc.invalidateQueries({ queryKey: qk.brief(id) })
+      qc.invalidateQueries({ queryKey: qk.supportCheck(id) })
     },
   })
 }

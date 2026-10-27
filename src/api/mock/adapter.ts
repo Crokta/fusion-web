@@ -3,7 +3,9 @@ import { ApiError, type ProblemCode } from '../problem'
 import { session } from '../session'
 import type {
   Alert,
+  Brief,
   CaseDetail,
+  SupportCheck,
   LiveEventMap,
   LiveEventName,
   Me,
@@ -28,6 +30,7 @@ const db = {
   feed: clone(fx.storyGroups),
   triage: clone(fx.triageItems),
   sources: clone(fx.sources),
+  briefs: [] as Brief[],
   /** Assessment written in this session, laid over the fixture case. */
   assessment: new Map<string, Partial<CaseDetail>>(),
   alerts: clone(fx.alerts),
@@ -133,6 +136,65 @@ function approveOrReinstate(
   bumpSource(s)
   audit('allowed', action, s.name)
   return s
+}
+
+function briefAt(id: string): Brief {
+  const b = db.briefs.find((x) => x.id === id)
+  if (!b) refuse('not_found', 'No such brief.', 404)
+  return b
+}
+
+/** The same check reporting runs: every sentence cites something this case holds. */
+function mockSupportCheck(b: Brief): SupportCheck {
+  const c = liveCase(b.caseId)
+  const citable: SupportCheck['citable'] = [
+    ...c.findings.map((f, i) => ({
+      ref: `finding:${f.id}`,
+      kind: 'finding' as const,
+      label: `F${i + 1}`,
+      text: f.statement,
+    })),
+    ...c.claims
+      .filter((x) => x.outcome !== 'unassessed')
+      .map((x, i) => ({
+        ref: `claim:${x.id}`,
+        kind: 'claim' as const,
+        label: `C${i + 1}`,
+        text: `${x.text} (${x.outcome})`,
+      })),
+    ...c.evidence.map((e) => ({
+      ref: `evidence:${e.id}`,
+      kind: 'evidence' as const,
+      label: e.ref,
+      text: e.label ?? e.title,
+    })),
+  ]
+  const known = new Map(citable.map((x) => [x.ref, x.label]))
+  const sentences = b.sentences.map((s, i) => {
+    const refs = s.supportRefs.map((ref) => ({
+      ref,
+      resolves: known.has(ref),
+      label: known.get(ref),
+    }))
+    return { order: i + 1, supported: refs.some((r) => r.resolves), refs }
+  })
+  const unsupported = sentences.filter((s) => !s.supported).map((s) => s.order)
+  const blockers = [
+    ...(unsupported.length
+      ? [`Every sentence needs support before release. Unsupported: ${unsupported.join(', ')}.`]
+      : []),
+    ...(c.state !== 'approved' && b.status !== 'released'
+      ? ['The case must be Approved before its product is released.']
+      : []),
+  ]
+  return {
+    caseReference: c.ref,
+    caseState: c.state,
+    ready: blockers.length === 0,
+    blockers,
+    sentences,
+    citable,
+  }
 }
 
 function liveCase(id: string): CaseDetail {
@@ -500,6 +562,95 @@ export const mockApi: FusionApi = {
       audit('allowed', 'case.submit', c.ref)
       return { ...detail, state: c.state }
     }),
+
+  briefs: (p) =>
+    delay(() => ({
+      items: p?.caseId ? db.briefs.filter((b) => b.caseId === p.caseId) : db.briefs,
+      nextCursor: null,
+    })),
+  brief: (id) => delay(() => briefAt(id)),
+  createBrief: (caseId) =>
+    delay(() => {
+      requireRole(['analyst', 'supervisor'], 'Drafting a brief')
+      const c = liveCase(caseId)
+      if (!['approved', 'released'].includes(c.state))
+        refuse(
+          'requirement_missing',
+          `A brief is drafted from approved findings: ${c.ref} is ${c.state}.`,
+        )
+      const now = new Date().toISOString()
+      const b: Brief = {
+        id: `b-${Date.now()}`,
+        caseId: c.id,
+        title: c.title,
+        authorId: me().id,
+        authorName: devName(),
+        status: 'draft',
+        currentVersion: 1,
+        sentences: [
+          ...c.findings.map((f) => ({ text: f.statement, supportRefs: [`finding:${f.id}`] })),
+          ...c.claims
+            .filter((x) => x.outcome !== 'unassessed')
+            .map((x) => ({
+              text: `The claim that ${x.text} is ${x.outcome}.`,
+              supportRefs: [`claim:${x.id}`],
+            })),
+        ],
+        versions: [{ number: 1, createdBy: devName(), createdAt: now, hasPdf: false }],
+        createdAt: now,
+        updatedAt: now,
+        etag: '"v0"',
+      }
+      db.briefs.unshift(b)
+      audit('allowed', 'product.draft', c.ref)
+      return b
+    }),
+  redraftBrief: (id, input, etag) =>
+    delay(() => {
+      requireRole(['analyst', 'supervisor'], 'Drafting a brief')
+      const b = briefAt(id)
+      if (b.etag !== etag) refuse('precondition_failed', 'Someone changed this brief first.', 412)
+      if (b.status === 'released') refuse('conflict', 'A released version cannot change.', 409)
+      Object.assign(b, input, { updatedAt: new Date().toISOString() })
+      b.etag = `"v${Number(b.etag.replace(/\D/g, '')) + 1}"`
+      return b
+    }),
+  supportCheck: (id) => delay(() => mockSupportCheck(briefAt(id))),
+  releaseBrief: (id, etag) =>
+    delay(() => {
+      requireRole(['reviewer', 'centre_lead'], 'Releasing a brief')
+      const b = briefAt(id)
+      if (b.etag !== etag) refuse('precondition_failed', 'Someone changed this brief first.', 412)
+      if (b.authorId === me().id)
+        refuse('self_approval_forbidden', 'You cannot release a brief you wrote.')
+      const check = mockSupportCheck(b)
+      if (!check.ready) refuse('unsupported_sentences', check.blockers.join(' '))
+      const now = new Date().toISOString()
+      b.status = 'released'
+      b.versions = b.versions.map((v) =>
+        v.number === b.currentVersion
+          ? {
+              ...v,
+              releasedAt: now,
+              releasedBy: devName(),
+              sha256: 'mock'.padEnd(64, '0'),
+              hasPdf: true,
+            }
+          : v,
+      )
+      const c = db.cases.find((x) => x.id === b.caseId)
+      if (c) c.state = 'released'
+      audit('allowed', 'product.release', b.title)
+      return b
+    }),
+  // Offline there is no Gotenberg: a text file says so instead of a PDF.
+  briefPdf: () =>
+    delay(
+      () =>
+        new Blob(['PDFs are rendered by reporting and Gotenberg; mock mode has neither.'], {
+          type: 'text/plain',
+        }),
+    ),
 
   reviews: () => delay(() => ({ items: db.reviews, nextCursor: null })),
   decideReview: (caseId, decision, comment) =>

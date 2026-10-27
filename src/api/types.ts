@@ -289,6 +289,65 @@ export interface ClaimOutcomeInput {
   statementIds: string[]
 }
 
+// ---------------------------------------------------------------- briefs
+
+export type BriefStatus = 'draft' | 'released'
+
+/** One sentence and what it rests on: `finding:<id>`, `claim:<id>` or `evidence:<id>`. */
+export interface BriefSentence {
+  text: string
+  supportRefs: string[]
+}
+
+export interface BriefVersion {
+  number: number
+  createdBy: string
+  createdAt: string
+  releasedBy?: string
+  releasedAt?: string
+  /** SHA-256 of the released PDF: what ProductReleased carries. */
+  sha256?: string
+  hasPdf: boolean
+}
+
+/** A brief (reporting's product): drafted from a case's approved findings, released by someone else. */
+export interface Brief {
+  id: string
+  caseId: string
+  title: string
+  authorId: string
+  authorName: string
+  status: BriefStatus
+  currentVersion: number
+  sentences: BriefSentence[]
+  versions: BriefVersion[]
+  createdAt: string
+  updatedAt: string
+  etag: string
+}
+
+/** Something of the case a sentence can cite, labelled as the case page labels it (F1, C1, EV-…). */
+export interface Citable {
+  ref: string
+  kind: 'finding' | 'claim' | 'evidence'
+  label: string
+  text: string
+}
+
+/** The support check: each sentence's references resolved against the case as it stands. */
+export interface SupportCheck {
+  caseReference: string
+  caseState: string
+  ready: boolean
+  blockers: string[]
+  sentences: {
+    order: number
+    supported: boolean
+    refs: { ref: string; resolves: boolean; label?: string }[]
+  }[]
+  citable: Citable[]
+}
+
 // ---------------------------------------------------------------- sources
 
 export type SourceKind = 'feed' | 'site' | 'social' | 'official'

@@ -101,7 +101,7 @@ function TopBar() {
       <Link
         to="/"
         className="group flex items-center gap-2.5 rounded-md pr-2"
-        aria-label="Mini Fusion Centre home"
+        aria-label="Homeland Fusion Centre home"
       >
         <span className="relative grid size-7 place-items-center rounded-lg bg-gradient-to-br from-[#0f3346] to-[#08161f] ring-1 ring-cyan/30 shadow-[0_0_18px_-4px_rgb(69_215_242/.6)]">
           <svg viewBox="0 0 24 24" className="size-4" aria-hidden>
@@ -125,7 +125,7 @@ function TopBar() {
         </span>
         <span className="hidden leading-none sm:block">
           <span className="block text-[13px] font-semibold tracking-[-0.01em] text-ink">
-            Mini Fusion Centre
+            Homeland Fusion Centre
           </span>
           <span className="mt-1 block text-[10px] tracking-wide text-ink-faint">
             Watch floor · Shift B

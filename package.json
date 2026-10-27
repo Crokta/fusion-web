@@ -3,7 +3,7 @@
   "private": true,
   "version": "0.1.0",
   "type": "module",
-  "description": "Mini Fusion Centre web front end: watch floor, casework, review, governance and the command wall planner.",
+  "description": "Homeland Fusion Centre web front end: watch floor, casework, review, governance and the command wall planner.",
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",

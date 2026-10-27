@@ -1,0 +1,56 @@
+name: CI
+
+# Type-checks, lints, tests and builds fusion-web. It needs no secrets: the web talks to the
+# platform through the gateway at run time and depends on no private package. There is no
+# container image yet; the web is served by Vite locally.
+on:
+  push:
+    branches: [main, dev]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Type-check, lint, test and build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+
+      # The pnpm version comes from packageManager in package.json.
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '24'
+          cache: pnpm
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Type-check
+        run: pnpm typecheck
+
+      - name: Lint
+        run: |
+          pnpm lint
+          pnpm format:check
+
+      - name: Tests
+        run: pnpm test
+
+      - name: Build
+        run: pnpm build
+
+      - uses: actions/upload-artifact@v5
+        with:
+          name: fusion-web-dist
+          path: dist/
+          if-no-files-found: error

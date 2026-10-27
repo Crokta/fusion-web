@@ -4,7 +4,9 @@ import {
   type AuditEntryDto,
   type CaseDto,
   type EvidenceDto,
+  type ProductDto,
   type SourceViewDto,
+  type SupportCheckDto,
   type StoryDto,
   type TriageItemDto,
   evidenceLabel,
@@ -16,7 +18,9 @@ import {
   toCaseDetail,
   toCaseSummary,
   toPolicy,
+  toBrief,
   toSearchHit,
+  toSupportCheck,
   toSourceRecord,
   toStoryGroups,
   toTriageItem,
@@ -515,5 +519,84 @@ describe('sources', () => {
       name,
     )
     expect([odd.status, odd.kind, odd.reliability]).toEqual(['proposed', 'site', null])
+  })
+})
+
+describe('briefs', () => {
+  // Shapes as reporting returned them in the live check (2026-10-27).
+  const product: ProductDto = {
+    id: 'p-1',
+    caseId: 'c-1',
+    title: 'Federal external borrowing request',
+    authorId: 'u-ada',
+    status: 'released',
+    currentVersion: 1,
+    sentences: [
+      { order: 2, text: 'The euro figure in one report is wrong.', supportRefs: ['claim:c1'] },
+      {
+        order: 1,
+        text: 'The President asked for new loans.',
+        supportRefs: ['finding:f1', 'evidence:e1'],
+      },
+    ],
+    unsupportedSentences: [],
+    versions: [
+      {
+        number: 1,
+        createdBy: 'u-ada',
+        createdAt: '2026-10-27T20:00:00Z',
+        releasedBy: 'u-rex',
+        releasedAt: '2026-10-27T20:10:00Z',
+        sha256: 'a'.repeat(64),
+        contentSha256: 'b'.repeat(64),
+        hasPdf: true,
+      },
+    ],
+    createdAt: '2026-10-27T20:00:00Z',
+    updatedAt: '2026-10-27T20:10:00Z',
+    version: 4,
+  }
+
+  it('orders sentences, names people and keeps the version for If-Match', () => {
+    const b = toBrief(product, name)
+    expect(b.sentences.map((s) => s.text)).toEqual([
+      'The President asked for new loans.',
+      'The euro figure in one report is wrong.',
+    ])
+    expect(b).toMatchObject({ status: 'released', authorName: 'Ada Analyst', etag: '"v4"' })
+    expect(b.versions[0]).toMatchObject({
+      releasedBy: 'Rex Reviewer',
+      hasPdf: true,
+      sha256: 'a'.repeat(64),
+    })
+  })
+
+  it('reads the support check and drops a citable kind it does not know', () => {
+    const dto: SupportCheckDto = {
+      productId: 'p-1',
+      caseReference: 'CASE-2026-67E90C',
+      caseState: 'approved',
+      ready: false,
+      blockers: ['Every sentence needs support before release. Unsupported: 2.'],
+      sentences: [
+        { order: 1, supported: true, refs: [{ ref: 'finding:f1', resolves: true, label: 'F1' }] },
+        {
+          order: 2,
+          supported: false,
+          refs: [{ ref: 'finding:gone', resolves: false, label: null }],
+        },
+      ],
+      citable: [
+        { ref: 'finding:f1', kind: 'finding', label: 'F1', text: 'x' },
+        { ref: 'story:s1', kind: 'story', label: 'S1', text: 'y' },
+      ],
+    }
+    const c = toSupportCheck(dto)
+    expect(c.sentences[1]?.refs[0]).toEqual({
+      ref: 'finding:gone',
+      resolves: false,
+      label: undefined,
+    })
+    expect(c.citable.map((x) => x.label)).toEqual(['F1'])
   })
 })

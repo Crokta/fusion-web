@@ -6,6 +6,8 @@ import {
   type EvidenceDto,
   type NameOf,
   type PageDto,
+  type ProductDto,
+  type SupportCheckDto,
   type PolicyDto,
   type SearchHitDto,
   type SourceDto,
@@ -20,6 +22,8 @@ import {
   shortId,
   toAlert,
   toApproval,
+  toBrief,
+  toSupportCheck,
   toAuditEvent,
   toCaseDetail,
   toCaseSummary,
@@ -101,6 +105,35 @@ async function send<T>(path: string, opts: RequestOptions = {}): Promise<Raw<T>>
 
 const request = async <T>(path: string, opts?: RequestOptions) => (await send<T>(path, opts)).body
 
+/** A binary download (a brief's PDF), with the same token and the same problem handling. */
+async function download(path: string): Promise<Blob> {
+  const headers = new Headers({ Accept: 'application/pdf, application/problem+json' })
+  const token = await session.getToken()
+  if (token) headers.set('Authorization', `Bearer ${token}`)
+  let response: Response
+  try {
+    response = await fetch(`${API_BASE}/api/v1${path}`, { headers })
+  } catch (cause) {
+    throw new ApiError({
+      title: 'Gateway unreachable',
+      status: 0,
+      code: 'network_error',
+      detail: cause instanceof Error ? cause.message : undefined,
+    })
+  }
+  if (!response.ok) {
+    const text = await response.text()
+    let body: unknown
+    try {
+      body = text ? JSON.parse(text) : undefined
+    } catch {
+      body = undefined
+    }
+    throw new ApiError(toProblem(response.status, body, response.statusText))
+  }
+  return response.blob()
+}
+
 const enc = encodeURIComponent
 
 // ---------------------------------------------------------------------------------------
@@ -141,6 +174,16 @@ const findingBody = (f: FindingInput) => ({
   evidenceIds: f.evidenceIds,
   statementIds: f.statementIds,
 })
+
+const briefPeople = (b: ProductDto) => [
+  b.authorId,
+  ...b.versions.flatMap((v) => [v.createdBy, v.releasedBy]),
+]
+
+async function briefCall(path: string, opts?: RequestOptions) {
+  const b = await request<ProductDto>(path, opts)
+  return toBrief(b, await nameOf(briefPeople(b)))
+}
 
 async function fetchCase(id: string) {
   return send<CaseDto>(`/cases/${enc(id)}`)
@@ -293,6 +336,27 @@ export const httpApi: FusionApi = {
     await send(`/claims/${enc(claimId)}/outcome`, { method: 'PUT', body: input })
     return httpApi.case(caseId)
   },
+
+  briefs: async (p) => {
+    const page = await request<PageDto<ProductDto>>('/products', {
+      query: { caseId: p?.caseId, limit: '100' },
+    })
+    const name = await nameOf(page.items.flatMap(briefPeople))
+    return { items: page.items.map((b) => toBrief(b, name)), nextCursor: page.nextCursor }
+  },
+  brief: (id) => briefCall(`/products/${enc(id)}`),
+  // No sentences: reporting seeds the draft from the case's findings and assessed claims.
+  createBrief: (caseId) => briefCall('/products', { method: 'POST', body: { caseId } }),
+  redraftBrief: (id, input, etag) =>
+    briefCall(`/products/${enc(id)}/draft`, { method: 'PUT', body: input, ifMatch: etag }),
+  supportCheck: async (id) =>
+    toSupportCheck(await request<SupportCheckDto>(`/products/${enc(id)}/support-check`)),
+  releaseBrief: (id, etag) =>
+    briefCall(`/products/${enc(id)}/release`, { method: 'POST', ifMatch: etag }),
+  briefPdf: (id, version) =>
+    download(
+      version ? `/products/${enc(id)}/versions/${version}/pdf` : `/products/${enc(id)}/preview.pdf`,
+    ),
 
   // A review is governance's CASE_REVIEW gate waiting on the caller's active role.
   reviews: async () => {

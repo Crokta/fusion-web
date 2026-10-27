@@ -14,7 +14,7 @@ export function AuthGate({ children }: { children: ReactNode }) {
         </span>
         <div>
           <p className="text-sm font-medium text-ink">
-            {status === 'error' ? 'Sign-in failed' : 'Signing in to Mini Fusion Centre…'}
+            {status === 'error' ? 'Sign-in failed' : 'Signing in to Homeland Fusion Centre…'}
           </p>
           <p className="mt-1 text-xs text-ink-muted">
             {status === 'error' ? error : 'Redirecting to the identity provider'}

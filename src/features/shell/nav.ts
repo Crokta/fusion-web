@@ -47,9 +47,7 @@ export const NAV: NavGroup[] = [
         to: '/products',
         label: 'Products',
         icon: FileText,
-        soon: true,
-        description:
-          'Briefs, drafting, support check, PDF rendering, distribution and corrections.',
+        description: 'Briefs drafted from approved findings, support-checked and released as PDF.',
       },
       { to: '/wall', label: 'Wall', icon: MonitorPlay, hint: '4' },
     ],

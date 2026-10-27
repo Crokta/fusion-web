@@ -11,6 +11,8 @@ import type {
   Alert,
   Approval,
   ApprovalStep,
+  Brief,
+  SupportCheck,
   ApprovalType,
   AuditEvent,
   CaseDetail,
@@ -735,6 +737,89 @@ export function toStoryGroups(stories: StoryDto[]): StoryGroup[] {
       }
     })
     .sort((a, b) => b.lastUpdated.localeCompare(a.lastUpdated))
+}
+
+// ---------------------------------------------------------------------------------------
+// Briefs
+// ---------------------------------------------------------------------------------------
+
+export interface ProductDto {
+  id: string
+  caseId: string
+  title: string
+  authorId: string
+  status: string
+  currentVersion: number
+  sentences: { order: number; text: string; supportRefs: string[] }[]
+  unsupportedSentences: number[]
+  versions: {
+    number: number
+    createdBy: string
+    createdAt: string
+    releasedBy: string | null
+    releasedAt: string | null
+    sha256: string | null
+    contentSha256?: string | null
+    hasPdf?: boolean
+  }[]
+  createdAt: string
+  updatedAt: string
+  version: number
+}
+
+export type SupportCheckDto = Omit<SupportCheck, 'sentences' | 'citable'> & {
+  productId: string
+  sentences: {
+    order: number
+    supported: boolean
+    refs: { ref: string; resolves: boolean; label: string | null }[]
+  }[]
+  citable: { ref: string; kind: string; label: string; text: string }[]
+}
+
+export function toBrief(p: ProductDto, name: NameOf): Brief {
+  return {
+    id: p.id,
+    caseId: p.caseId,
+    title: p.title,
+    authorId: p.authorId,
+    authorName: name(p.authorId),
+    status: p.status === 'released' ? 'released' : 'draft',
+    currentVersion: p.currentVersion,
+    sentences: [...p.sentences]
+      .sort((a, b) => a.order - b.order)
+      .map((s) => ({ text: s.text, supportRefs: s.supportRefs })),
+    versions: p.versions.map((v) => ({
+      number: v.number,
+      createdBy: name(v.createdBy),
+      createdAt: v.createdAt,
+      releasedBy: v.releasedBy ? name(v.releasedBy) : undefined,
+      releasedAt: v.releasedAt ?? undefined,
+      sha256: v.sha256 ?? undefined,
+      hasPdf: !!v.hasPdf,
+    })),
+    createdAt: p.createdAt,
+    updatedAt: p.updatedAt,
+    etag: `"v${p.version}"`,
+  }
+}
+
+const CITABLE_KINDS = ['finding', 'claim', 'evidence'] as const
+
+export function toSupportCheck(c: SupportCheckDto): SupportCheck {
+  return {
+    caseReference: c.caseReference,
+    caseState: c.caseState,
+    ready: c.ready,
+    blockers: c.blockers,
+    sentences: c.sentences.map((s) => ({
+      ...s,
+      refs: s.refs.map((r) => ({ ref: r.ref, resolves: r.resolves, label: r.label ?? undefined })),
+    })),
+    citable: c.citable
+      .filter((x) => (CITABLE_KINDS as readonly string[]).includes(x.kind))
+      .map((x) => ({ ...x, kind: x.kind as (typeof CITABLE_KINDS)[number] })),
+  }
 }
 
 // ---------------------------------------------------------------------------------------

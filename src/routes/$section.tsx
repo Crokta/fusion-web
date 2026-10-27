@@ -3,7 +3,6 @@ import { ArrowLeft, Search } from 'lucide-react'
 import { SOON_SECTIONS } from '@/features/shell/nav'
 
 const EPICS: Record<string, string> = {
-  products: 'E28 · Briefs, release and distribution',
   'my-feed': 'E19 · Channels and personal feeds',
   analytics: 'E35 · Outcome dashboard',
   entities: 'E22 · Entity resolution',

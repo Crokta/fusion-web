@@ -66,7 +66,7 @@ export function PresentationView({
         <div className="flex h-full flex-col">
           <div className="flex h-9 shrink-0 items-center gap-4 border-b border-white/[0.06] bg-void px-4 text-[11px] text-ink-muted">
             <span className="font-semibold tracking-[0.18em] text-ink-2 uppercase">
-              Mini Fusion Centre
+              Homeland Fusion Centre
             </span>
             <span className="text-ink-faint">·</span>
             <span>{PRESET_NAME[state.preset]}</span>

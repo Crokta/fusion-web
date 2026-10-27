@@ -44,6 +44,7 @@ import {
   useAssessmentAccess,
 } from './Assessment'
 import { EvidenceList } from './EvidenceList'
+import { CaseBriefsPanel } from '@/features/briefs/CaseBriefsPanel'
 
 const timelineIcon: Record<TimelineEntry['kind'], { icon: LucideIcon; cls: string }> = {
   state: { icon: GitCommitVertical, cls: 'text-cyan bg-cyan/10 ring-cyan/30' },
@@ -148,6 +149,7 @@ function CaseView({ c }: { c: CaseDetail }) {
         </div>
 
         <div className="min-w-0 space-y-5">
+          <CaseBriefsPanel c={c} />
           <ChecklistPanel c={c} />
 
           <Panel title="Indicators" icon={Brain} eyebrow="Model outputs" bodyClassName="p-0">
