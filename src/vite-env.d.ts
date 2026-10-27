@@ -1,0 +1,13 @@
+/// <reference types="vite/client" />
+
+interface ImportMetaEnv {
+  readonly VITE_API_BASE?: string
+  readonly VITE_USE_MOCKS?: string
+  readonly VITE_AUTH_DISABLED?: string
+  readonly VITE_OIDC_AUTHORITY?: string
+  readonly VITE_OIDC_CLIENT_ID?: string
+}
+
+interface ImportMeta {
+  readonly env: ImportMetaEnv
+}

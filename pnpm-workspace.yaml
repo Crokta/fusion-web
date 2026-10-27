@@ -1,0 +1,17 @@
+# pnpm refuses to silently skip a dependency's build script. esbuild is a first-party Vite
+# dependency, so it is allowed here explicitly rather than by blanket opt-in.
+allowBuilds:
+  esbuild: true
+minimumReleaseAgeExclude:
+  - '@typescript-eslint/eslint-plugin@8.72.1'
+  - '@typescript-eslint/parser@8.72.1'
+  - '@typescript-eslint/project-service@8.72.1'
+  - '@typescript-eslint/scope-manager@8.72.1'
+  - '@typescript-eslint/tsconfig-utils@8.72.1'
+  - '@typescript-eslint/type-utils@8.72.1'
+  - '@typescript-eslint/types@8.72.1'
+  - '@typescript-eslint/typescript-estree@8.72.1'
+  - '@typescript-eslint/utils@8.72.1'
+  - '@typescript-eslint/visitor-keys@8.72.1'
+  - lucide-react@1.62.0
+  - typescript-eslint@8.72.1

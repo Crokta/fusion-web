@@ -1,0 +1,265 @@
+@import 'tailwindcss';
+@import '@fontsource-variable/inter';
+@import '@fontsource-variable/jetbrains-mono';
+
+/*
+  Fusion command-centre palette.
+
+  The watch floor is a dim room with a 7680 × 4320 wall at one end, so the UI is dark first:
+  deep navy surfaces with a teal cast, hairline borders, and four signal colours that keep a
+  single meaning everywhere — cyan is "live / selected", green is "healthy / approved",
+  amber is "needs attention", red is "priority / refused". Nothing else is saturated.
+*/
+@theme {
+  --font-sans:
+    'Inter Variable', 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-mono: 'JetBrains Mono Variable', ui-monospace, 'SFMono-Regular', Menlo, monospace;
+
+  /* Surfaces, darkest to lightest */
+  --color-void: #04080c;
+  --color-base: #060c12;
+  --color-canvas: #08111a;
+  --color-panel: #0b1621;
+  --color-panel-2: #0f1d2a;
+  --color-raised: #132433;
+  --color-hover: #172b3c;
+
+  /* Lines */
+  --color-line: #15283a;
+  --color-line-soft: #10202e;
+  --color-line-strong: #22405a;
+
+  /* Text */
+  --color-ink: #e2edf4;
+  --color-ink-2: #b4c6d3;
+  --color-ink-muted: #7f97a8;
+  --color-ink-faint: #536b7c;
+
+  /* Signals */
+  --color-cyan: #45d7f2;
+  --color-cyan-deep: #0f7f99;
+  --color-teal: #2fc2b8;
+  --color-green: #3ee0a8;
+  --color-amber: #ffb95a;
+  --color-red: #ff5c72;
+  --color-violet: #a99bff;
+
+  --radius-xs: 4px;
+  --radius-sm: 6px;
+  --radius-md: 9px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+
+  --shadow-panel: 0 1px 0 0 rgb(255 255 255 / 0.03) inset, 0 12px 32px -18px rgb(0 0 0 / 0.8);
+  --shadow-pop: 0 0 0 1px rgb(69 215 242 / 0.08), 0 24px 60px -20px rgb(0 0 0 / 0.9);
+  --shadow-glow-cyan: 0 0 0 1px rgb(69 215 242 / 0.55), 0 0 24px -4px rgb(69 215 242 / 0.45);
+  --shadow-glow-red: 0 0 0 1px rgb(255 92 114 / 0.5), 0 0 22px -6px rgb(255 92 114 / 0.55);
+
+  --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-snappy: cubic-bezier(0.22, 1, 0.36, 1);
+
+  --animate-pulse-dot: pulse-dot 2.4s var(--ease-snappy) infinite;
+  --animate-fade-in: fade-in 220ms var(--ease-snappy) both;
+  --animate-rise-in: rise-in 320ms var(--ease-out-expo) both;
+  --animate-slide-in-right: slide-in-right 380ms var(--ease-out-expo) both;
+  --animate-scale-in: scale-in 240ms var(--ease-out-expo) both;
+  --animate-shimmer: shimmer 1.6s linear infinite;
+  --animate-ping-slow: ping-slow 2.6s cubic-bezier(0, 0, 0.2, 1) infinite;
+  --animate-flash: flash 1.4s var(--ease-snappy) both;
+
+  @keyframes pulse-dot {
+    0%,
+    100% {
+      opacity: 1;
+    }
+    50% {
+      opacity: 0.35;
+    }
+  }
+  @keyframes fade-in {
+    from {
+      opacity: 0;
+    }
+  }
+  @keyframes rise-in {
+    from {
+      opacity: 0;
+      transform: translateY(6px);
+    }
+  }
+  @keyframes slide-in-right {
+    from {
+      opacity: 0.4;
+      transform: translateX(32px);
+    }
+  }
+  @keyframes scale-in {
+    from {
+      opacity: 0;
+      transform: scale(0.97);
+    }
+  }
+  @keyframes shimmer {
+    from {
+      background-position: -200% 0;
+    }
+    to {
+      background-position: 200% 0;
+    }
+  }
+  @keyframes ping-slow {
+    0% {
+      transform: scale(1);
+      opacity: 0.7;
+    }
+    80%,
+    100% {
+      transform: scale(3.2);
+      opacity: 0;
+    }
+  }
+  @keyframes flash {
+    0% {
+      background-color: rgb(69 215 242 / 0.16);
+    }
+    100% {
+      background-color: transparent;
+    }
+  }
+}
+
+@layer base {
+  html {
+    color-scheme: dark;
+    background: var(--color-void);
+  }
+
+  body {
+    margin: 0;
+    min-height: 100dvh;
+    color: var(--color-ink);
+    font-family: var(--font-sans);
+    font-size: 13px;
+    line-height: 1.5;
+    font-feature-settings:
+      'cv11' 1,
+      'ss01' 1,
+      'ss03' 1;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+    background:
+      radial-gradient(1200px 600px at 70% -10%, rgb(25 90 120 / 0.18), transparent 60%),
+      radial-gradient(900px 500px at -10% 110%, rgb(20 120 110 / 0.1), transparent 60%),
+      var(--color-base);
+    background-attachment: fixed;
+  }
+
+  ::selection {
+    background: rgb(69 215 242 / 0.3);
+    color: white;
+  }
+
+  /* One focus treatment everywhere: a crisp cyan ring that reads on every surface. */
+  :focus-visible {
+    outline: 2px solid var(--color-cyan);
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+
+  button {
+    cursor: pointer;
+  }
+  button:disabled {
+    cursor: not-allowed;
+  }
+
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--color-line-strong) transparent;
+  }
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: var(--color-line-strong);
+    border: 3px solid transparent;
+    background-clip: padding-box;
+    border-radius: 999px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+}
+
+@layer components {
+  /* Small caps label used for section eyebrows and table heads. */
+  .eyebrow {
+    font-size: 10.5px;
+    font-weight: 600;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--color-ink-muted);
+  }
+
+  .num {
+    font-variant-numeric: tabular-nums;
+    font-feature-settings:
+      'tnum' 1,
+      'zero' 1;
+  }
+
+  /* Panel surface: a hairline border, a faint top highlight, and a soft drop. */
+  .surface {
+    background:
+      linear-gradient(180deg, rgb(255 255 255 / 0.018), transparent 40%), var(--color-panel);
+    border: 1px solid var(--color-line);
+    box-shadow: var(--shadow-panel);
+  }
+
+  .skeleton {
+    background: linear-gradient(
+      90deg,
+      rgb(255 255 255 / 0.03) 0%,
+      rgb(255 255 255 / 0.07) 50%,
+      rgb(255 255 255 / 0.03) 100%
+    );
+    background-size: 200% 100%;
+    animation: var(--animate-shimmer);
+    border-radius: 6px;
+  }
+
+  /* Faint engineering grid for maps, wall bezels and empty states. */
+  .grid-texture {
+    background-image:
+      linear-gradient(rgb(69 215 242 / 0.045) 1px, transparent 1px),
+      linear-gradient(90deg, rgb(69 215 242 / 0.045) 1px, transparent 1px);
+    background-size: 24px 24px;
+  }
+
+  .scanlines {
+    background-image: repeating-linear-gradient(
+      180deg,
+      rgb(255 255 255 / 0.025) 0,
+      rgb(255 255 255 / 0.025) 1px,
+      transparent 1px,
+      transparent 3px
+    );
+  }
+}
+
+/*
+  Motion is decoration here, never information, so reduced-motion users lose nothing by
+  having all of it switched off.
+*/
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}
