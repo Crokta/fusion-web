@@ -160,14 +160,38 @@ export interface CaseSummary {
   marking: Marking
 }
 
+export type Confidence = 'high' | 'moderate' | 'low'
+
 export interface Finding {
   id: string
+  /** The judgement itself, as it would read in a brief. */
   statement: string
-  confidence: 'high' | 'moderate' | 'low'
+  confidence: Confidence
+  /** What it rests on and what limits it. */
   basis: string
   authorName: string
   recordedAt: string
   evidenceIds: string[]
+  /** Statements it cites (casework); absent in the mock. */
+  statementIds?: string[]
+  revisedBy?: string
+  /** The finding's own version, sent as If-Match when it is revised. */
+  version?: number
+}
+
+export type StatementChannel = 'official' | 'witness' | 'interview' | 'press' | 'other'
+
+/** A sourced account recorded on the case: who said what, when, and how it reached us. */
+export interface CaseStatement {
+  id: string
+  speaker: string
+  speakerRole?: string
+  channel: StatementChannel
+  givenAt?: string
+  text: string
+  evidenceId?: string
+  recordedBy: string
+  recordedAt: string
 }
 
 export interface EvidenceItem {
@@ -201,12 +225,19 @@ export interface Indicator {
   producedAt: string
 }
 
+export type ClaimOutcome = 'unassessed' | 'supported' | 'contradicted' | 'inconclusive'
+
 export interface Claim {
   id: string
   text: string
   attributedTo: string
-  outcome: 'unassessed' | 'supported' | 'contradicted' | 'inconclusive'
+  outcome: ClaimOutcome
+  /** How many originals and statements the outcome cites. */
   supportingEvidence: number
+  rationale?: string
+  evidenceIds?: string[]
+  statementIds?: string[]
+  outcomeSetBy?: string
 }
 
 export interface TimelineEntry {
@@ -225,9 +256,37 @@ export interface CaseDetail extends CaseSummary {
   indicators: Indicator[]
   claims: Claim[]
   timeline: TimelineEntry[]
-  checklist: { label: string; done: boolean }[]
+  checklist: { key?: string; label: string; done: boolean }[]
+  statements?: CaseStatement[]
+  summaryBy?: string
+  summaryUpdatedAt?: string
   /** ETag for If-Match on mutations. */
   etag: string
+}
+
+/** A finding as written (also a revision, which replaces it whole). */
+export interface FindingInput {
+  statement: string
+  confidence: Confidence
+  basis: string
+  evidenceIds: string[]
+  statementIds: string[]
+}
+
+export interface StatementInput {
+  speaker: string
+  speakerRole?: string
+  channel: StatementChannel
+  givenAt?: string
+  text: string
+  evidenceId?: string
+}
+
+export interface ClaimOutcomeInput {
+  outcome: ClaimOutcome
+  rationale: string
+  evidenceIds: string[]
+  statementIds: string[]
 }
 
 // ---------------------------------------------------------------- sources

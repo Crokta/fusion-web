@@ -221,6 +221,8 @@ export const can = {
     r === 'analyst' || r === 'supervisor' || r === 'centre_lead' || r === 'admin',
   proposeSource: (r: Role) => r === 'analyst' || r === 'supervisor',
   approveSource: (r: Role) => r === 'supervisor' || r === 'centre_lead',
+  /** case.write in permissions.yaml: assessment and the checklist. */
+  writeCase: (r: Role) => r === 'analyst' || r === 'supervisor',
   /** triage.work in permissions.yaml: reading the queue and promoting from it. */
   workTriage: (r: Role) => r === 'analyst' || r === 'supervisor',
   changePolicy: (r: Role) => r === 'admin' || r === 'centre_lead',

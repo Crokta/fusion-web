@@ -80,8 +80,8 @@ describe('cases', () => {
     const d = toCaseDetail(caseDto, [], name, '"v5"')
     expect(d.etag).toBe('"v5"')
     expect(d.checklist).toEqual([
-      { label: 'Sources checked', done: true },
-      { label: 'Limitations noted', done: false },
+      { key: 'sources_checked', label: 'Sources checked', done: true },
+      { key: 'limitations_noted', label: 'Limitations noted', done: false },
     ])
     expect(d.timeline[0]!.at >= d.timeline[d.timeline.length - 1]!.at).toBe(true)
   })
@@ -350,6 +350,100 @@ describe('triage and evidence', () => {
   it("speaks casework's word for a normal priority", () => {
     expect(fromPriority('medium')).toBe('normal')
     expect(fromPriority('high')).toBe('high')
+  })
+})
+
+describe('assessment', () => {
+  // Shapes as casework returned them in the live check (2026-10-27).
+  const assessed: CaseDto = {
+    ...caseDto,
+    items: [{ evidenceId: 'ev-1', attachedAt: '2026-10-27T17:03:51Z' }],
+    summary: 'Gunmen killed a cleric and his friend in Dutsin-Ma.',
+    summaryBy: 'u-ada',
+    summaryUpdatedAt: '2026-10-27T19:00:00Z',
+    statements: [
+      {
+        id: 'st-1',
+        speaker: 'Katsina State Police Command',
+        speakerRole: 'spokesperson',
+        channel: 'official',
+        givenAt: '2026-10-27T10:00:00Z',
+        text: 'Two men were shot dead.',
+        evidenceId: 'ev-1',
+        recordedBy: 'u-ada',
+        recordedAt: '2026-10-27T19:01:00Z',
+      },
+    ],
+    findings: [
+      {
+        id: 'f-1',
+        text: 'Two men were killed in Dutsin-Ma on 26 Oct.',
+        confidence: 'high',
+        basis: 'Police statement and the preserved article.',
+        evidenceIds: ['ev-1'],
+        statementIds: ['st-1'],
+        authorId: 'u-ada',
+        recordedAt: '2026-10-27T19:02:00Z',
+        revisedBy: 'u-rex',
+        updatedAt: '2026-10-27T19:05:00Z',
+        version: 2,
+      },
+    ],
+    claims: [
+      {
+        id: 'c-1',
+        text: 'Ten people were killed.',
+        attributedTo: 'Social media post',
+        outcome: 'contradicted',
+        rationale: 'Police and the article say two.',
+        evidenceIds: ['ev-1'],
+        statementIds: ['st-1'],
+        recordedBy: 'u-ada',
+        recordedAt: '2026-10-27T19:03:00Z',
+        outcomeSetBy: 'u-rex',
+        outcomeSetAt: '2026-10-27T19:04:00Z',
+      },
+    ],
+  }
+
+  it('maps summary, findings, statements and claims with names', () => {
+    const d = toCaseDetail(assessed, [], name, '"v9"')
+    expect(d.summary).toBe('Gunmen killed a cleric and his friend in Dutsin-Ma.')
+    expect(d.summaryBy).toBe('Ada Analyst')
+    expect(d.findings[0]).toMatchObject({
+      statement: 'Two men were killed in Dutsin-Ma on 26 Oct.',
+      confidence: 'high',
+      statementIds: ['st-1'],
+      authorName: 'Ada Analyst',
+      revisedBy: 'Rex Reviewer',
+      version: 2,
+    })
+    expect(d.statements?.[0]).toMatchObject({
+      speaker: 'Katsina State Police Command',
+      channel: 'official',
+    })
+    expect(d.claims[0]).toMatchObject({
+      outcome: 'contradicted',
+      supportingEvidence: 2,
+      outcomeSetBy: 'Rex Reviewer',
+    })
+    expect(d.checklist[0]?.key).toBeDefined()
+  })
+
+  it('puts the assessment on the timeline', () => {
+    const texts = toCaseDetail(assessed, [], name, null).timeline.map((t) => t.text)
+    expect(texts).toEqual(
+      expect.arrayContaining([
+        'Finding F1 revised (v2)',
+        'Statement S1 recorded: Katsina State Police Command',
+        'Claim assessed: contradicted',
+      ]),
+    )
+  })
+
+  it('reads a case from a casework without assessment', () => {
+    const d = toCaseDetail(caseDto, [], name, null)
+    expect([d.summary, d.findings, d.claims, d.statements]).toEqual(['', [], [], []])
   })
 })
 

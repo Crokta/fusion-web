@@ -21,4 +21,16 @@ describe('problem details', () => {
       code: 'internal_error',
     })
   })
+
+  it("shows the server's words for a code that several rules share", () => {
+    const p = toProblem(403, {
+      title: 'Requirement missing',
+      status: 403,
+      code: 'requirement_missing',
+      detail: 'The mission checklist is not complete: sources_checked.',
+    })
+    expect(describeError(new ApiError(p))).toBe(
+      'The mission checklist is not complete: sources_checked.',
+    )
+  })
 })

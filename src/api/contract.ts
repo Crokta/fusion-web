@@ -5,6 +5,9 @@ import type {
   CaseDetail,
   CaseState,
   CaseSummary,
+  ClaimOutcomeInput,
+  FindingInput,
+  StatementInput,
   ItemDetail,
   PromoteInput,
   Me,
@@ -58,6 +61,21 @@ export interface FusionApi {
   cases(params?: { state?: CaseState | 'active'; q?: string }): Promise<Page<CaseSummary>>
   case(id: string): Promise<CaseDetail>
   submitCase(id: string, etag: string): Promise<CaseDetail>
+  setChecklistItem(id: string, key: string, done: boolean): Promise<CaseDetail>
+
+  // Assessment: each answers with the whole case, so the page redraws from one response.
+  setCaseSummary(id: string, summary: string): Promise<CaseDetail>
+  recordFinding(id: string, input: FindingInput): Promise<CaseDetail>
+  /** `version` is the finding's own: a stale one is refused (412). */
+  reviseFinding(
+    id: string,
+    findingId: string,
+    input: FindingInput,
+    version: number,
+  ): Promise<CaseDetail>
+  recordStatement(id: string, input: StatementInput): Promise<CaseDetail>
+  recordClaim(id: string, input: { text: string; attributedTo: string }): Promise<CaseDetail>
+  setClaimOutcome(caseId: string, claimId: string, input: ClaimOutcomeInput): Promise<CaseDetail>
 
   reviews(): Promise<Page<ReviewItem>>
   decideReview(caseId: string, decision: ReviewDecision, comment: string): Promise<void>

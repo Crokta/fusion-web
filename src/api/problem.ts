@@ -75,10 +75,14 @@ function fallbackCode(status: number): ProblemCode {
   return 'internal_error'
 }
 
+/**
+ * Wording for codes whose meaning never varies. A code that several rules share — such as
+ * requirement_missing (an open checklist, a finding missing at submit, a triage field) — is not
+ * here: the server's own detail says which rule it was.
+ */
 const FRIENDLY: Partial<Record<string, string>> = {
   capability_not_authorised: 'Your active role is not permitted to do this.',
   self_approval_forbidden: 'You cannot approve your own work. Another reviewer must decide.',
-  requirement_missing: 'A live collection requirement is needed first.',
   precondition_failed: 'Someone else changed this record. Reload and try again.',
   network_error: 'The gateway could not be reached.',
 }

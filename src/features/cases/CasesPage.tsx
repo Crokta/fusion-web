@@ -16,7 +16,7 @@ import {
   inputClass,
 } from '@/components/ui'
 import { cn } from '@/lib/cn'
-import { countdown, relative } from '@/lib/format'
+import { countdown, since } from '@/lib/format'
 import { useNow } from '@/lib/hooks'
 import { useShell } from '@/features/shell/ShellContext'
 
@@ -161,7 +161,7 @@ export function CasesPage() {
                       {c.title}
                     </span>
                     <span className="block truncate text-[11.5px] text-ink-faint">
-                      {c.category} · {c.place} · updated {relative(c.updatedAt, now)}
+                      {c.category} · {c.place} · updated {since(c.updatedAt, now)}
                     </span>
                   </span>
                   <span>

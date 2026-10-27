@@ -15,8 +15,13 @@ import type {
   AuditEvent,
   CaseDetail,
   CaseState,
+  CaseStatement,
   CaseSummary,
+  Claim,
+  Confidence,
   EvidenceItem,
+  Finding,
+  StatementChannel,
   ItemDetail,
   Marking,
   Priority,
@@ -84,7 +89,54 @@ export interface CaseDto {
   checklistComplete: boolean
   checklist: ChecklistItemDto[]
   items: { evidenceId: string; attachedAt: string }[]
+  // Assessment (absent from a casework older than E22).
+  summary?: string | null
+  summaryBy?: string | null
+  summaryUpdatedAt?: string | null
+  findings?: FindingDto[]
+  claims?: ClaimDto[]
+  statements?: StatementDto[]
   version: number
+}
+
+export interface FindingDto {
+  id: string
+  text: string
+  confidence: string
+  basis: string
+  evidenceIds: string[]
+  statementIds: string[]
+  authorId: string
+  recordedAt: string
+  revisedBy: string | null
+  updatedAt: string
+  version: number
+}
+
+export interface ClaimDto {
+  id: string
+  text: string
+  attributedTo: string
+  outcome: string
+  rationale: string | null
+  evidenceIds: string[]
+  statementIds: string[]
+  recordedBy: string
+  recordedAt: string
+  outcomeSetBy: string | null
+  outcomeSetAt: string | null
+}
+
+export interface StatementDto {
+  id: string
+  speaker: string
+  speakerRole: string | null
+  channel: string
+  givenAt: string | null
+  text: string
+  evidenceId: string | null
+  recordedBy: string
+  recordedAt: string
 }
 
 export interface EvidenceDto {
@@ -352,7 +404,78 @@ export function toEvidenceItem(e: EvidenceDto): EvidenceItem {
   }
 }
 
-/** A timeline from what casework records: creation, checklist ticks and the current state. */
+const CONFIDENCES: readonly Confidence[] = ['high', 'moderate', 'low']
+const OUTCOMES: readonly Claim['outcome'][] = [
+  'unassessed',
+  'supported',
+  'contradicted',
+  'inconclusive',
+]
+const CHANNELS_OF_STATEMENT: readonly StatementChannel[] = [
+  'official',
+  'witness',
+  'interview',
+  'press',
+  'other',
+]
+const oneOf = <T extends string>(all: readonly T[], value: string, fallback: T): T =>
+  all.includes(value as T) ? (value as T) : fallback
+
+export function toFinding(f: FindingDto, name: NameOf): Finding {
+  return {
+    id: f.id,
+    statement: f.text,
+    confidence: oneOf(CONFIDENCES, f.confidence, 'low'),
+    basis: f.basis,
+    authorName: name(f.authorId),
+    recordedAt: f.recordedAt,
+    evidenceIds: f.evidenceIds,
+    statementIds: f.statementIds,
+    revisedBy: f.revisedBy ? name(f.revisedBy) : undefined,
+    version: f.version,
+  }
+}
+
+export function toClaim(c: ClaimDto, name: NameOf): Claim {
+  return {
+    id: c.id,
+    text: c.text,
+    attributedTo: c.attributedTo,
+    outcome: oneOf(OUTCOMES, c.outcome, 'unassessed'),
+    supportingEvidence: c.evidenceIds.length + c.statementIds.length,
+    rationale: c.rationale ?? undefined,
+    evidenceIds: c.evidenceIds,
+    statementIds: c.statementIds,
+    outcomeSetBy: c.outcomeSetBy ? name(c.outcomeSetBy) : undefined,
+  }
+}
+
+export function toStatement(s: StatementDto, name: NameOf): CaseStatement {
+  return {
+    id: s.id,
+    speaker: s.speaker,
+    speakerRole: s.speakerRole ?? undefined,
+    channel: oneOf(CHANNELS_OF_STATEMENT, s.channel, 'other'),
+    givenAt: s.givenAt ?? undefined,
+    text: s.text,
+    evidenceId: s.evidenceId ?? undefined,
+    recordedBy: name(s.recordedBy),
+    recordedAt: s.recordedAt,
+  }
+}
+
+/** Everyone a case page names, for one /people lookup. */
+export const peopleOfCase = (c: CaseDto) => [
+  c.ownerId,
+  c.createdBy,
+  c.summaryBy,
+  ...c.checklist.map((i) => i.doneBy),
+  ...(c.findings ?? []).flatMap((f) => [f.authorId, f.revisedBy]),
+  ...(c.claims ?? []).flatMap((x) => [x.recordedBy, x.outcomeSetBy]),
+  ...(c.statements ?? []).map((x) => x.recordedBy),
+]
+
+/** A timeline from what casework records: creation, assessment, checklist ticks and the current state. */
 export function caseTimeline(c: CaseDto, name: NameOf): TimelineEntry[] {
   const entries: TimelineEntry[] = [
     {
@@ -371,6 +494,41 @@ export function caseTimeline(c: CaseDto, name: NameOf): TimelineEntry[] {
         kind: 'note' as const,
         text: `Checklist: ${i.label}`,
       })),
+    ...(c.findings ?? []).map((f, i) => ({
+      id: `${c.id}-${f.id}`,
+      at: f.updatedAt,
+      actor: name(f.revisedBy ?? f.authorId),
+      kind: 'finding' as const,
+      text:
+        f.version > 1 ? `Finding F${i + 1} revised (v${f.version})` : `Finding F${i + 1} recorded`,
+    })),
+    ...(c.statements ?? []).map((x, i) => ({
+      id: `${c.id}-${x.id}`,
+      at: x.recordedAt,
+      actor: name(x.recordedBy),
+      kind: 'note' as const,
+      text: `Statement S${i + 1} recorded: ${x.speaker}`,
+    })),
+    ...(c.claims ?? []).flatMap((x) => [
+      {
+        id: `${c.id}-${x.id}`,
+        at: x.recordedAt,
+        actor: name(x.recordedBy),
+        kind: 'note' as const,
+        text: `Claim recorded: “${x.text.length > 60 ? `${x.text.slice(0, 60)}…` : x.text}”`,
+      },
+      ...(x.outcomeSetAt
+        ? [
+            {
+              id: `${c.id}-${x.id}-outcome`,
+              at: x.outcomeSetAt,
+              actor: name(x.outcomeSetBy),
+              kind: 'review' as const,
+              text: `Claim assessed: ${x.outcome}`,
+            },
+          ]
+        : []),
+    ]),
     ...c.items.map((i) => ({
       id: `${c.id}-${i.evidenceId}`,
       at: i.attachedAt,
@@ -398,15 +556,18 @@ export function toCaseDetail(
 ): CaseDetail {
   return {
     ...toCaseSummary(c, name),
-    summary: '',
+    summary: c.summary ?? '',
+    summaryBy: c.summaryBy ? name(c.summaryBy) : undefined,
+    summaryUpdatedAt: c.summaryUpdatedAt ?? undefined,
     authorId: c.createdBy,
-    // casework records findings, indicators and claims in a later epic (E22).
-    findings: [],
+    findings: (c.findings ?? []).map((f) => toFinding(f, name)),
     evidence: evidence.map(toEvidenceItem),
+    // Indicators come from the analysis services, which report nothing yet (E19–E21).
     indicators: [],
-    claims: [],
+    claims: (c.claims ?? []).map((x) => toClaim(x, name)),
+    statements: (c.statements ?? []).map((x) => toStatement(x, name)),
     timeline: caseTimeline(c, name),
-    checklist: c.checklist.map((i) => ({ label: i.label, done: i.done })),
+    checklist: c.checklist.map((i) => ({ key: i.key, label: i.label, done: i.done })),
     etag: etag ?? `"v${c.version}"`,
   }
 }
@@ -421,11 +582,13 @@ export function toReviewItem(a: ApprovalDto, c: CaseDto | undefined, name: NameO
     authorName: name(a.requestedBy),
     submittedAt: a.requestedAt,
     dueAt: c?.deadline ?? a.requestedAt,
-    findingCount: 0,
+    findingCount: c?.findings?.length ?? 0,
     evidenceCount: c?.items.length ?? 0,
     priority: toPriority(c?.priority),
     marking: DEFAULT_MARKING,
-    revision: c?.version ?? a.version,
+    // The case's version counts every edit, not submissions; casework doesn't count submissions
+    // yet, so no resubmission badge rather than a misleading one.
+    revision: 1,
   }
 }
 

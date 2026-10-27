@@ -15,6 +15,7 @@ import {
   type WallPublicationDto,
   type WallStateDto,
   fromPriority,
+  peopleOfCase,
   fromWallState,
   shortId,
   toAlert,
@@ -36,7 +37,7 @@ import {
 import type { FusionApi } from './contract'
 import { ApiError, toProblem } from './problem'
 import { session } from './session'
-import type { Kpi, Me, SearchHit, WallPreset } from './types'
+import type { FindingInput, Kpi, Me, SearchHit, WallPreset } from './types'
 
 export const API_BASE = (import.meta.env.VITE_API_BASE ?? 'http://localhost:5100').replace(
   /\/$/,
@@ -131,6 +132,15 @@ async function sourceCall(path: string, opts: RequestOptions) {
   const s = await request<SourceViewDto>(path, opts)
   return toSourceRecord(s, await nameOf([s.proposedBy, s.approvedBy]))
 }
+
+/** casework calls the judgement `text`; the screens call it the finding's statement. */
+const findingBody = (f: FindingInput) => ({
+  text: f.statement,
+  confidence: f.confidence,
+  basis: f.basis,
+  evidenceIds: f.evidenceIds,
+  statementIds: f.statementIds,
+})
 
 async function fetchCase(id: string) {
   return send<CaseDto>(`/cases/${enc(id)}`)
@@ -242,12 +252,46 @@ export const httpApi: FusionApi = {
         ),
       )
     ).filter((e): e is EvidenceDto => e !== null)
-    const name = await nameOf([c.ownerId, c.createdBy, ...c.checklist.map((i) => i.doneBy)])
+    const name = await nameOf(peopleOfCase(c))
     return toCaseDetail(c, evidence, name, etag)
   },
   submitCase: async (id, etag) => {
     await send(`/cases/${enc(id)}/submit`, { method: 'POST', ifMatch: etag })
     return httpApi.case(id)
+  },
+  // Each assessment call answers with the case; the page needs evidence and names on top, so it
+  // is read again through case() — one more request for a page that stays consistent.
+  setChecklistItem: async (id, key, done) => {
+    await send(`/cases/${enc(id)}/checklist/${enc(key)}`, { method: 'PUT', body: { done } })
+    return httpApi.case(id)
+  },
+  setCaseSummary: async (id, summary) => {
+    await send(`/cases/${enc(id)}/summary`, { method: 'PUT', body: { summary } })
+    return httpApi.case(id)
+  },
+  recordFinding: async (id, input) => {
+    await send(`/cases/${enc(id)}/findings`, { method: 'POST', body: findingBody(input) })
+    return httpApi.case(id)
+  },
+  reviseFinding: async (id, findingId, input, version) => {
+    await send(`/cases/${enc(id)}/findings/${enc(findingId)}`, {
+      method: 'PUT',
+      body: findingBody(input),
+      ifMatch: `"v${version}"`,
+    })
+    return httpApi.case(id)
+  },
+  recordStatement: async (id, input) => {
+    await send(`/cases/${enc(id)}/statements`, { method: 'POST', body: input })
+    return httpApi.case(id)
+  },
+  recordClaim: async (id, input) => {
+    await send(`/cases/${enc(id)}/claims`, { method: 'POST', body: input })
+    return httpApi.case(id)
+  },
+  setClaimOutcome: async (caseId, claimId, input) => {
+    await send(`/claims/${enc(claimId)}/outcome`, { method: 'PUT', body: input })
+    return httpApi.case(caseId)
   },
 
   // A review is governance's CASE_REVIEW gate waiting on the caller's active role.

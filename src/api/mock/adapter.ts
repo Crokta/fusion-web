@@ -3,6 +3,7 @@ import { ApiError, type ProblemCode } from '../problem'
 import { session } from '../session'
 import type {
   Alert,
+  CaseDetail,
   LiveEventMap,
   LiveEventName,
   Me,
@@ -27,6 +28,8 @@ const db = {
   feed: clone(fx.storyGroups),
   triage: clone(fx.triageItems),
   sources: clone(fx.sources),
+  /** Assessment written in this session, laid over the fixture case. */
+  assessment: new Map<string, Partial<CaseDetail>>(),
   alerts: clone(fx.alerts),
   reviews: clone(fx.reviews),
   approvals: clone(fx.approvals),
@@ -130,6 +133,28 @@ function approveOrReinstate(
   bumpSource(s)
   audit('allowed', action, s.name)
   return s
+}
+
+function liveCase(id: string): CaseDetail {
+  const base = fx.caseDetail(id)
+  if (!base) refuse('not_found', `Case ${id} not found`, 404)
+  const live = db.cases.find((c) => c.id === base.id)
+  return { ...base, ...db.assessment.get(base.id), state: live?.state ?? base.state }
+}
+
+/** The same editing rules as casework: analysts and supervisors, and not while under review or after release. */
+function assess(
+  id: string,
+  action: string,
+  change: (c: CaseDetail) => Partial<CaseDetail>,
+): CaseDetail {
+  requireRole(['analyst', 'supervisor'], 'Assessing a case')
+  const c = liveCase(id)
+  if (!['open', 'in_assessment', 'returned', 'approved'].includes(c.state))
+    refuse('conflict', `A ${c.state.replace('_', ' ')} case cannot be changed.`, 409)
+  db.assessment.set(c.id, { ...db.assessment.get(c.id), ...change(c) })
+  audit('allowed', action, c.ref)
+  return liveCase(id)
 }
 
 function bumpWall(next: WallState): WallState {
@@ -377,13 +402,88 @@ export const mockApi: FusionApi = {
       }
       return { items, nextCursor: null, total: items.length }
     }),
-  case: (id) =>
-    delay(() => {
-      const base = fx.caseDetail(id)
-      if (!base) refuse('not_found', `Case ${id} not found`, 404)
-      const live = db.cases.find((c) => c.id === base.id)
-      return { ...base, state: live?.state ?? base.state }
-    }),
+  case: (id) => delay(() => liveCase(id)),
+  setChecklistItem: (id, key, done) =>
+    delay(() =>
+      assess(id, 'case.checklist', (c) => ({
+        checklist: c.checklist.map((i) => ((i.key ?? i.label) === key ? { ...i, done } : i)),
+      })),
+    ),
+  setCaseSummary: (id, summary) =>
+    delay(() =>
+      assess(id, 'case.summary', () => ({
+        summary,
+        summaryBy: devName(),
+        summaryUpdatedAt: new Date().toISOString(),
+      })),
+    ),
+  recordFinding: (id, input) =>
+    delay(() =>
+      assess(id, 'finding.record', (c) => ({
+        findings: [
+          ...c.findings,
+          {
+            id: `f-${Date.now()}`,
+            ...input,
+            authorName: devName(),
+            recordedAt: new Date().toISOString(),
+            version: 1,
+          },
+        ],
+      })),
+    ),
+  reviseFinding: (id, findingId, input, version) =>
+    delay(() =>
+      assess(id, 'finding.revise', (c) => {
+        const f = c.findings.find((x) => x.id === findingId)
+        if (!f) refuse('not_found', 'No such finding', 404)
+        if ((f.version ?? 1) !== version)
+          refuse('precondition_failed', 'This finding changed since you loaded it.', 412)
+        return {
+          findings: c.findings.map((x) =>
+            x.id === findingId ? { ...x, ...input, version: version + 1, revisedBy: devName() } : x,
+          ),
+        }
+      }),
+    ),
+  recordStatement: (id, input) =>
+    delay(() =>
+      assess(id, 'statement.record', (c) => ({
+        statements: [
+          ...(c.statements ?? []),
+          {
+            id: `s-${Date.now()}`,
+            ...input,
+            recordedBy: devName(),
+            recordedAt: new Date().toISOString(),
+          },
+        ],
+      })),
+    ),
+  recordClaim: (id, input) =>
+    delay(() =>
+      assess(id, 'claim.record', (c) => ({
+        claims: [
+          ...c.claims,
+          { id: `cl-${Date.now()}`, ...input, outcome: 'unassessed', supportingEvidence: 0 },
+        ],
+      })),
+    ),
+  setClaimOutcome: (caseId, claimId, input) =>
+    delay(() =>
+      assess(caseId, 'claim.outcome', (c) => ({
+        claims: c.claims.map((x) =>
+          x.id === claimId
+            ? {
+                ...x,
+                ...input,
+                supportingEvidence: input.evidenceIds.length + input.statementIds.length,
+                outcomeSetBy: devName(),
+              }
+            : x,
+        ),
+      })),
+    ),
   submitCase: (id) =>
     delay(() => {
       const c = db.cases.find((x) => x.id === id)

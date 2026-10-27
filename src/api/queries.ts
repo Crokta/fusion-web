@@ -3,6 +3,9 @@ import { api } from './index'
 import type {
   Alert,
   CaseState,
+  ClaimOutcomeInput,
+  FindingInput,
+  StatementInput,
   Page,
   PromoteInput,
   ReviewDecision,
@@ -138,6 +141,48 @@ export const useCases = (state?: CaseState | 'active', q?: string) =>
 
 export const useCase = (id: string) =>
   useQuery({ queryKey: qk.case(id), queryFn: () => api.case(id), enabled: !!id })
+
+export type CaseAction =
+  | { kind: 'checklist'; key: string; done: boolean }
+  | { kind: 'summary'; summary: string }
+  | { kind: 'finding'; input: FindingInput }
+  | { kind: 'revise'; findingId: string; input: FindingInput; version: number }
+  | { kind: 'statement'; input: StatementInput }
+  | { kind: 'claim'; input: { text: string; attributedTo: string } }
+  | { kind: 'outcome'; claimId: string; input: ClaimOutcomeInput }
+
+/** Every assessment change; each answers with the case, which replaces the cached one. */
+export function useCaseAction(id: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (a: CaseAction) => {
+      switch (a.kind) {
+        case 'checklist':
+          return api.setChecklistItem(id, a.key, a.done)
+        case 'summary':
+          return api.setCaseSummary(id, a.summary)
+        case 'finding':
+          return api.recordFinding(id, a.input)
+        case 'revise':
+          return api.reviseFinding(id, a.findingId, a.input, a.version)
+        case 'statement':
+          return api.recordStatement(id, a.input)
+        case 'claim':
+          return api.recordClaim(id, a.input)
+        case 'outcome':
+          return api.setClaimOutcome(id, a.claimId, a.input)
+      }
+    },
+    onSuccess: (data) => {
+      qc.setQueryData(qk.case(id), data)
+      // State can move (open → in assessment, approved → submitted): lists and the queue follow.
+      qc.invalidateQueries({ queryKey: ['cases'] })
+      qc.invalidateQueries({ queryKey: qk.reviews })
+    },
+    // A 412 or a refused change means the cached case is out of date: read it again.
+    onError: () => qc.invalidateQueries({ queryKey: qk.case(id) }),
+  })
+}
 
 export function useSubmitCase(id: string) {
   const qc = useQueryClient()

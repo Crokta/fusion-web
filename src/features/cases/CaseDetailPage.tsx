@@ -5,26 +5,22 @@ import {
   Check,
   ClipboardList,
   FileSearch,
-  FileText,
   Flag,
   GitCommitVertical,
   ListChecks,
   MessageSquareText,
-  Quote,
-  Scale,
   Send,
   Stamp,
   UserPlus,
   type LucideIcon,
 } from 'lucide-react'
 import { ApiError, describeError } from '@/api'
-import { useCase, useSubmitCase } from '@/api/queries'
-import type { CaseDetail, Claim, EvidenceItem, Finding, TimelineEntry } from '@/api/types'
+import { useCase, useCaseAction, useSubmitCase } from '@/api/queries'
+import type { CaseDetail, EvidenceItem, TimelineEntry } from '@/api/types'
 import { StateStepper } from '@/components/StateStepper'
 import { useToast } from '@/components/Toaster'
 import {
   Avatar,
-  Badge,
   Button,
   CaseStateBadge,
   EmptyState,
@@ -34,26 +30,20 @@ import {
   Panel,
   PriorityBadge,
   Skeleton,
-  type Tone,
 } from '@/components/ui'
 import { cn } from '@/lib/cn'
-import { dateTime, relative } from '@/lib/format'
+import { dateTime, relative, since } from '@/lib/format'
 import { useNow } from '@/lib/hooks'
 import { SlaChip } from './CasesPage'
+import {
+  AssessmentNotice,
+  ClaimsPanel,
+  FindingsPanel,
+  StatementsPanel,
+  SummaryPanel,
+  useAssessmentAccess,
+} from './Assessment'
 import { EvidenceList } from './EvidenceList'
-
-const confidenceTone: Record<Finding['confidence'], Tone> = {
-  high: 'green',
-  moderate: 'amber',
-  low: 'neutral',
-}
-
-const claimTone: Record<Claim['outcome'], Tone> = {
-  supported: 'green',
-  contradicted: 'red',
-  inconclusive: 'amber',
-  unassessed: 'neutral',
-}
 
 const timelineIcon: Record<TimelineEntry['kind'], { icon: LucideIcon; cls: string }> = {
   state: { icon: GitCommitVertical, cls: 'text-cyan bg-cyan/10 ring-cyan/30' },
@@ -94,7 +84,6 @@ export function CaseDetailPage({ caseId }: { caseId: string }) {
 
 function CaseView({ c }: { c: CaseDetail }) {
   const now = useNow()
-  const evidenceById = Object.fromEntries(c.evidence.map((e) => [e.id, e]))
 
   return (
     <div className="mx-auto max-w-[1440px] px-6 py-6">
@@ -138,7 +127,7 @@ function CaseView({ c }: { c: CaseDetail }) {
             </div>
             <div>
               <dt className="eyebrow text-[9.5px]">Updated</dt>
-              <dd className="num mt-1 text-ink-2">{relative(c.updatedAt, now)}</dd>
+              <dd className="num mt-1 text-ink-2">{since(c.updatedAt, now)}</dd>
             </div>
           </dl>
         </div>
@@ -150,82 +139,12 @@ function CaseView({ c }: { c: CaseDetail }) {
 
       <div className="grid grid-cols-1 gap-5 xl:grid-cols-[minmax(0,1fr)_380px]">
         <div className="min-w-0 space-y-5">
-          <Panel title="Summary" icon={FileText}>
-            <p className="max-w-3xl text-[13.5px] leading-relaxed text-ink-2">{c.summary}</p>
-          </Panel>
-
-          <Panel
-            title="Findings"
-            icon={Flag}
-            actions={<span className="num text-[11.5px] text-ink-faint">{c.findings.length}</span>}
-            bodyClassName="p-0"
-          >
-            {c.findings.length === 0 ? (
-              <EmptyState icon={Flag} title="No findings recorded yet" className="py-8">
-                Findings are written by analysts and approved by a reviewer who is not the author.
-              </EmptyState>
-            ) : (
-              <ol className="divide-y divide-line-soft">
-                {c.findings.map((f, i) => (
-                  <li key={f.id} className="flex gap-4 px-4 py-4">
-                    <span className="num mt-0.5 grid size-6 shrink-0 place-items-center rounded-md bg-white/[0.04] font-mono text-[11px] text-ink-muted ring-1 ring-white/[0.06]">
-                      F{i + 1}
-                    </span>
-                    <div className="min-w-0 flex-1">
-                      <p className="text-[13.5px] leading-relaxed text-ink">{f.statement}</p>
-                      <p className="mt-1.5 text-[12px] leading-relaxed text-ink-muted">
-                        <Scale
-                          size={12}
-                          className="mr-1 inline -translate-y-px text-ink-faint"
-                          aria-hidden
-                        />
-                        {f.basis}
-                      </p>
-                      <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
-                        <Badge tone={confidenceTone[f.confidence]}>{f.confidence} confidence</Badge>
-                        {f.evidenceIds.map((id) => (
-                          <span
-                            key={id}
-                            className="rounded-[4px] bg-white/[0.035] px-1.5 py-0.5 font-mono text-[10.5px] text-ink-muted ring-1 ring-white/[0.06]"
-                          >
-                            {evidenceById[id]?.ref ?? id}
-                          </span>
-                        ))}
-                        <span className="ml-auto text-[11px] text-ink-faint">
-                          {f.authorName} · {relative(f.recordedAt, now)}
-                        </span>
-                      </div>
-                    </div>
-                  </li>
-                ))}
-              </ol>
-            )}
-          </Panel>
-
+          <AssessmentNotice c={c} />
+          <SummaryPanel c={c} />
+          <FindingsPanel c={c} />
+          <StatementsPanel c={c} />
           <EvidencePanel evidence={c.evidence} />
-
-          <Panel
-            title="Claims"
-            icon={Quote}
-            actions={<span className="num text-[11.5px] text-ink-faint">{c.claims.length}</span>}
-            bodyClassName="p-0"
-          >
-            <ul className="divide-y divide-line-soft">
-              {c.claims.map((cl) => (
-                <li key={cl.id} className="flex items-start gap-4 px-4 py-3">
-                  <div className="min-w-0 flex-1">
-                    <p className="text-[13px] text-ink">“{cl.text}”</p>
-                    <p className="mt-0.5 text-[11.5px] text-ink-faint">
-                      Attributed to {cl.attributedTo} · {cl.supportingEvidence} supporting evidence
-                    </p>
-                  </div>
-                  <Badge tone={claimTone[cl.outcome]} className="capitalize">
-                    {cl.outcome}
-                  </Badge>
-                </li>
-              ))}
-            </ul>
-          </Panel>
+          <ClaimsPanel c={c} />
         </div>
 
         <div className="min-w-0 space-y-5">
@@ -330,6 +249,10 @@ function EvidencePanel({ evidence }: { evidence: EvidenceItem[] }) {
 
 function ChecklistPanel({ c }: { c: CaseDetail }) {
   const submit = useSubmitCase(c.id)
+  const tick = useCaseAction(c.id)
+  const { canEdit } = useAssessmentAccess(c)
+  // The checklist is the analyst's own record; the server keeps it fixed once released or closed.
+  const canTick = canEdit && c.checklist.every((i) => i.key)
   const toast = useToast()
   const done = c.checklist.filter((i) => i.done).length
   const complete = done === c.checklist.length
@@ -359,26 +282,46 @@ function ChecklistPanel({ c }: { c: CaseDetail }) {
           style={{ width: `${(done / Math.max(1, c.checklist.length)) * 100}%` }}
         />
       </div>
-      <ul className="space-y-1.5">
-        {c.checklist.map((item) => (
-          <li key={item.label} className="flex items-start gap-2.5 text-[12.5px]">
-            <span
-              className={cn(
-                'mt-px grid size-4 shrink-0 place-items-center rounded-[4px] ring-1 ring-inset',
-                item.done
-                  ? 'bg-green/15 text-green ring-green/40'
-                  : 'text-transparent ring-line-strong',
-              )}
-              aria-hidden
-            >
-              <Check size={11} strokeWidth={3} />
-            </span>
-            <span className={item.done ? 'text-ink-2' : 'text-ink-muted'}>
-              {item.label}
-              <span className="sr-only">{item.done ? ' (done)' : ' (outstanding)'}</span>
-            </span>
-          </li>
-        ))}
+      <ul className="space-y-1">
+        {c.checklist.map((item) => {
+          const key = item.key ?? item.label
+          return (
+            <li key={key}>
+              <button
+                type="button"
+                role="checkbox"
+                aria-checked={item.done}
+                disabled={!canTick || tick.isPending}
+                onClick={() =>
+                  tick.mutate(
+                    { kind: 'checklist', key, done: !item.done },
+                    {
+                      onError: (e) =>
+                        toast({ title: 'Not saved', detail: describeError(e), tone: 'error' }),
+                    },
+                  )
+                }
+                className={cn(
+                  '-mx-1.5 flex w-[calc(100%+0.75rem)] items-start gap-2.5 rounded-md px-1.5 py-1 text-left text-[12.5px] transition-colors',
+                  canTick ? 'hover:bg-white/[0.03]' : 'cursor-default',
+                )}
+              >
+                <span
+                  className={cn(
+                    'mt-px grid size-4 shrink-0 place-items-center rounded-[4px] ring-1 ring-inset',
+                    item.done
+                      ? 'bg-green/15 text-green ring-green/40'
+                      : 'text-transparent ring-line-strong',
+                  )}
+                  aria-hidden
+                >
+                  <Check size={11} strokeWidth={3} />
+                </span>
+                <span className={item.done ? 'text-ink-2' : 'text-ink-muted'}>{item.label}</span>
+              </button>
+            </li>
+          )
+        })}
       </ul>
       {canSubmit ? (
         <div className="mt-4 border-t border-line-soft pt-4">
@@ -404,8 +347,8 @@ function ChecklistPanel({ c }: { c: CaseDetail }) {
             Submit for review
           </Button>
           <p className="mt-2 text-[11px] leading-relaxed text-ink-faint">
-            Submit requires a complete checklist and statements. The reviewer must not be the
-            author.
+            Submit needs a complete checklist and at least one finding, each citing an original or a
+            statement. The reviewer must not be the author.
           </p>
         </div>
       ) : (
