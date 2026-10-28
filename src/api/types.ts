@@ -451,6 +451,16 @@ export interface SourceRecord {
   suspendedReason: string | null
   suspendedAt: string | null
   etag: string
+  collection: SourceCollection
+}
+
+/** How collection of a source is going (intake records the crawl scheduler and the collector's results). */
+export interface SourceCollection {
+  lastCrawlAt: string | null
+  lastStoryAt: string | null
+  /** The collector's stable error code for the last failed crawl, until a story comes in again. */
+  lastError: string | null
+  lastErrorAt: string | null
 }
 
 export interface SourceInput {

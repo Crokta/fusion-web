@@ -426,6 +426,7 @@ export const mockApi: FusionApi = {
         suspendedReason: null,
         suspendedAt: null,
         etag: '"v0"',
+        collection: { lastCrawlAt: null, lastStoryAt: null, lastError: null, lastErrorAt: null },
       }
       db.sources.unshift(s)
       audit('allowed', 'source.propose', s.name)
@@ -446,6 +447,7 @@ export const mockApi: FusionApi = {
           approvedAt: null,
           suspendedReason: null,
           suspendedAt: null,
+          collection: { lastCrawlAt: null, lastStoryAt: null, lastError: null, lastErrorAt: null },
         })
       bumpSource(s)
       audit('allowed', 'source.edit', s.name)

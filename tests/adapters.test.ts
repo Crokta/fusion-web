@@ -516,6 +516,28 @@ describe('sources', () => {
     })
   })
 
+  it('reads how collection is going, and copes with an intake that does not say', () => {
+    const withHealth = toSourceRecord(
+      {
+        ...dto,
+        collection: {
+          lastCrawlAt: '2026-10-28T17:00:00Z',
+          lastStoryAt: null,
+          lastError: 'target_unavailable',
+          lastErrorAt: '2026-10-28T17:02:00Z',
+        },
+      },
+      name,
+    )
+    expect(withHealth.collection).toEqual({
+      lastCrawlAt: '2026-10-28T17:00:00Z',
+      lastStoryAt: null,
+      lastError: 'target_unavailable',
+      lastErrorAt: '2026-10-28T17:02:00Z',
+    })
+    expect(toSourceRecord(dto, name).collection.lastError).toBeNull()
+  })
+
   it('never shows a source it cannot read as collecting', () => {
     const odd = toSourceRecord(
       { ...dto, status: 'archived', kind: 'podcast', reliability: 'Z' },

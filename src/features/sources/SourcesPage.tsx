@@ -1,4 +1,6 @@
 import {
+  Activity,
+  AlertTriangle,
   Ban,
   CheckCircle2,
   Library,
@@ -38,6 +40,7 @@ import {
 import { cn } from '@/lib/cn'
 import { dateTime, since } from '@/lib/format'
 import { useNow } from '@/lib/hooks'
+import { PLATFORM_LABEL, crawlErrorText, platformOf, socialTarget } from './social'
 
 type Filter = 'all' | SourceStatus
 
@@ -68,9 +71,21 @@ const KINDS: { value: SourceKind; label: string; hint: string }[] = [
     label: 'Official channel',
     hint: 'A government or agency site, read like a website',
   },
-  { value: 'social', label: 'Social media', hint: 'Not collected until social access is decided' },
+  {
+    value: 'social',
+    label: 'Social media',
+    hint: 'A profile, page, community or platform search, collected through Bright Data about once an hour',
+  },
 ]
 const kindLabel = (k: SourceKind) => KINDS.find((x) => x.value === k)?.label ?? k
+
+/** Where a source sits: its site, or for a social source its platform and what is followed. */
+function placeOf(s: { kind: SourceKind; url: string; host: string }) {
+  if (s.kind !== 'social') return s.host
+  const t = socialTarget(s.url)
+  if (!t.platform) return s.host
+  return `${PLATFORM_LABEL[t.platform]}${t.ok && t.target === 'search' ? ' search' : ''}`
+}
 
 const GRADES: { value: Reliability; label: string }[] = [
   { value: 'A', label: 'A — Completely reliable' },
@@ -168,10 +183,17 @@ export function SourcesPage() {
                         <div className="min-w-0 flex-1">
                           <p className="truncate text-[13px] font-medium text-ink">{s.name}</p>
                           <p className="mt-0.5 truncate text-[11.5px] text-ink-faint">
-                            {s.host} · {kindLabel(s.kind)} · proposed by {s.proposedBy.name}{' '}
+                            {placeOf(s)} · {kindLabel(s.kind)} · proposed by {s.proposedBy.name}{' '}
                             {since(s.proposedAt, now)}
                           </p>
                         </div>
+                        {s.status === 'approved' && s.collection.lastError && (
+                          <AlertTriangle
+                            size={14}
+                            className="shrink-0 text-amber"
+                            aria-label="The last crawl failed"
+                          />
+                        )}
                         <Badge tone={statusTone[s.status]} dot>
                           {statusLabel[s.status]}
                         </Badge>
@@ -297,6 +319,8 @@ function SourceDetail({ source }: { source: SourceRecord }) {
         )}
       </Panel>
 
+      {!editing && source.status === 'approved' && <CollectionPanel source={source} />}
+
       {!editing && source.status !== 'approved' && (
         <Panel
           title={source.status === 'proposed' ? 'Approve' : 'Reinstate'}
@@ -309,7 +333,9 @@ function SourceDetail({ source }: { source: SourceRecord }) {
           />
           <p className="mb-4 text-[12.5px] leading-relaxed text-ink-muted">
             {source.status === 'proposed'
-              ? 'Approving puts the source into collection: it is crawled from the next round (every 5 minutes) and its stories reach the feed.'
+              ? source.kind === 'social'
+                ? 'Approving puts the source into collection: its posts are collected through Bright Data from the next round, then about once an hour, and reach the feed.'
+                : 'Approving puts the source into collection: it is crawled from the next round (every 5 minutes) and its stories reach the feed.'
               : 'Reinstating puts the source back into collection from the next round.'}
           </p>
           <Button
@@ -364,6 +390,76 @@ function SourceDetail({ source }: { source: SourceRecord }) {
         </Panel>
       )}
     </div>
+  )
+}
+
+/** How collection is going: the last round, the last story and, if it failed, why. */
+function CollectionPanel({ source }: { source: SourceRecord }) {
+  const now = useNow()
+  const c = source.collection
+  const target = source.kind === 'social' ? socialTarget(source.url) : null
+  return (
+    <Panel title="Collection" icon={Activity}>
+      {c.lastError && (
+        <div
+          role="alert"
+          className="mb-4 flex gap-3 rounded-lg border border-amber/35 bg-amber/[0.07] px-3.5 py-3"
+        >
+          <AlertTriangle size={16} className="mt-0.5 shrink-0 text-amber" aria-hidden />
+          <p className="text-[12.5px] leading-relaxed text-ink-muted">
+            <span className="font-medium text-amber">The last crawl failed</span>
+            {c.lastErrorAt && <> {since(c.lastErrorAt, now)}</>}. {crawlErrorText(c.lastError)}{' '}
+            <code className="font-mono text-[11px] text-ink-2">{c.lastError}</code>
+          </p>
+        </div>
+      )}
+      <dl className="grid grid-cols-[110px_minmax(0,1fr)] gap-x-3 gap-y-2.5 text-[12.5px]">
+        {target?.platform && (
+          <>
+            <dt className="text-ink-faint">Collects</dt>
+            <dd className="text-ink-2">
+              {PLATFORM_LABEL[target.platform]}
+              {target.ok ? ` · ${target.detail}` : ''}
+              <span className="mt-0.5 block text-[11.5px] text-ink-faint">
+                Through Bright Data, about once an hour
+              </span>
+            </dd>
+          </>
+        )}
+        <dt className="text-ink-faint">Last round</dt>
+        <dd className="text-ink-2">
+          {c.lastCrawlAt ? since(c.lastCrawlAt, now) : 'Not yet — from the next round'}
+        </dd>
+        <dt className="text-ink-faint">Last story</dt>
+        <dd className="text-ink-2">
+          {c.lastStoryAt ? since(c.lastStoryAt, now) : 'None collected yet'}
+        </dd>
+      </dl>
+    </Panel>
+  )
+}
+
+/** What the address will collect, or why it can't be, while the form is being filled in. */
+function AddressNote({ kind, url }: { kind: SourceKind; url: string }) {
+  if (!url) return null
+  if (kind !== 'social') {
+    const platform = platformOf(url)
+    return platform ? (
+      <p className="-mt-2 text-[11.5px] text-amber">
+        This is {platform === 'x' || platform === 'instagram' ? 'an' : 'a'}{' '}
+        {PLATFORM_LABEL[platform]} address: choose Social media to collect it.
+      </p>
+    ) : null
+  }
+  const t = socialTarget(url)
+  return t.ok ? (
+    <p className="-mt-2 text-[11.5px] text-green">
+      {PLATFORM_LABEL[t.platform]} {t.target}: collects {t.detail}.
+    </p>
+  ) : (
+    <p className="-mt-2 text-[11.5px] text-amber" role="alert">
+      {t.problem}
+    </p>
   )
 }
 
@@ -521,10 +617,12 @@ function SourceForm({
           className={cn(inputClass, 'font-mono text-[12px]', touched && !urlOk && 'border-red/60')}
         />
       </Field>
-      {touched && !urlOk && (
+      {touched && !urlOk ? (
         <p className="-mt-2 text-[11.5px] text-red" role="alert">
           The address is a full http or https link.
         </p>
+      ) : (
+        urlOk && <AddressNote kind={kind} url={url.trim()} />
       )}
       <Field label="Reliability">
         <select

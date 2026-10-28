@@ -38,6 +38,7 @@ import type {
   SearchHit,
   SearchKind,
   SearchResponse,
+  SourceCollection,
   SourceHealth,
   SourceKind,
   SourceRecord,
@@ -356,6 +357,8 @@ export interface SourceViewDto extends SourceDto {
   suspendedReason: string | null
   suspendedAt: string | null
   version: number
+  /** Absent from intake before ADR 0007. */
+  collection?: Partial<SourceCollection> | null
 }
 
 export interface SearchHitDto {
@@ -991,6 +994,12 @@ export function toSourceRecord(s: SourceViewDto, name: NameOf): SourceRecord {
     suspendedReason: s.suspendedReason,
     suspendedAt: s.suspendedAt,
     etag: `"v${s.version}"`,
+    collection: {
+      lastCrawlAt: s.collection?.lastCrawlAt ?? null,
+      lastStoryAt: s.collection?.lastStoryAt ?? null,
+      lastError: s.collection?.lastError ?? null,
+      lastErrorAt: s.collection?.lastErrorAt ?? null,
+    },
   }
 }
 
