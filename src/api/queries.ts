@@ -11,6 +11,7 @@ import type {
   PromoteInput,
   ReviewDecision,
   SearchKind,
+  ShiftInput,
   SourceInput,
   SourceStatus,
   TriageStatus,
@@ -28,6 +29,11 @@ export const qk = {
   watchFloor: ['watch-floor'] as const,
   feed: (channel?: string) => ['feed', channel ?? 'all'] as const,
   alerts: (status?: string) => ['alerts', status ?? 'all'] as const,
+  alert: (id: string) => ['alert', id] as const,
+  deliveries: (id: string) => ['alert', id, 'deliveries'] as const,
+  notifications: ['notifications'] as const,
+  roster: ['roster'] as const,
+  onDuty: ['roster', 'now'] as const,
   briefs: (caseId?: string) => ['briefs', caseId ?? 'all'] as const,
   brief: (id: string) => ['brief', id] as const,
   supportCheck: (id: string) => ['brief', id, 'support-check'] as const,
@@ -57,6 +63,59 @@ export const useFeed = (channel?: string) =>
 export const useAlerts = (status?: string) =>
   useQuery({ queryKey: qk.alerts(status), queryFn: () => api.alerts({ status }) })
 
+export const useAlert = (id: string) =>
+  useQuery({ queryKey: qk.alert(id), queryFn: () => api.alert(id), enabled: !!id })
+
+export const useAlertDeliveries = (id: string) =>
+  useQuery({
+    queryKey: qk.deliveries(id),
+    queryFn: () => api.alertDeliveries(id),
+    enabled: !!id,
+    // Retries and back-off happen on the server; the page follows them.
+    refetchInterval: 10_000,
+  })
+
+export const useNotifications = () =>
+  useQuery({ queryKey: qk.notifications, queryFn: () => api.notifications() })
+
+export function useMarkNotificationRead() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id: string) => api.markNotificationRead(id),
+    onSuccess: () => qc.invalidateQueries({ queryKey: qk.notifications }),
+  })
+}
+
+export const useDutyRoster = () =>
+  useQuery({ queryKey: qk.roster, queryFn: () => api.dutyRoster() })
+
+export const useOnDutyNow = () =>
+  useQuery({ queryKey: qk.onDuty, queryFn: () => api.onDutyNow(), refetchInterval: 60_000 })
+
+export function useAddShift() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (input: ShiftInput) => api.addShift(input),
+    onSuccess: () => qc.invalidateQueries({ queryKey: qk.roster }),
+  })
+}
+
+export function useRemoveShift() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id: string) => api.removeShift(id),
+    onSuccess: () => qc.invalidateQueries({ queryKey: qk.roster }),
+  })
+}
+
+export const usePeopleSearch = (q: string) =>
+  useQuery({
+    queryKey: ['people-search', q.trim().toLowerCase()],
+    queryFn: () => api.searchPeople(q),
+    enabled: q.trim().length >= 2,
+    staleTime: 60_000,
+  })
+
 export function useAcknowledgeAlert() {
   const qc = useQueryClient()
   return useMutation({
@@ -78,8 +137,9 @@ export function useAcknowledgeAlert() {
       return { snapshots }
     },
     onError: (_e, _id, ctx) => ctx?.snapshots.forEach(([key, data]) => qc.setQueryData(key, data)),
-    onSettled: () => {
+    onSettled: (_a, _e, id) => {
       qc.invalidateQueries({ queryKey: ['alerts'] })
+      qc.invalidateQueries({ queryKey: qk.alert(id) })
       qc.invalidateQueries({ queryKey: qk.watchFloor })
     },
   })

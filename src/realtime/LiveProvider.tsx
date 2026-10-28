@@ -67,7 +67,12 @@ export function LiveProvider({ children }: { children: ReactNode }) {
               break
             case 'alert.raised':
               qc.invalidateQueries({ queryKey: ['alerts'] })
+              qc.invalidateQueries({ queryKey: ['alert'] })
               qc.invalidateQueries({ queryKey: qk.watchFloor })
+              break
+            case 'notification.delivered':
+              qc.invalidateQueries({ queryKey: qk.notifications })
+              qc.invalidateQueries({ queryKey: ['alert'] })
               break
             case 'wall.state':
               qc.invalidateQueries({ queryKey: qk.wall })

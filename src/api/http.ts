@@ -4,6 +4,8 @@ import {
   type AuditEntryDto,
   type CaseDto,
   type EvidenceDto,
+  type MessageDto,
+  type ShiftDto,
   type NameOf,
   type PageDto,
   type ProductDto,
@@ -21,6 +23,8 @@ import {
   fromWallState,
   shortId,
   toAlert,
+  toDelivery,
+  toShift,
   toApproval,
   toBrief,
   toSupportCheck,
@@ -41,7 +45,7 @@ import {
 import type { FusionApi } from './contract'
 import { ApiError, toProblem } from './problem'
 import { session } from './session'
-import type { FindingInput, Kpi, Me, SearchHit, WallPreset } from './types'
+import type { DutyTier, FindingInput, Kpi, Me, PersonContact, SearchHit, WallPreset } from './types'
 
 export const API_BASE = (import.meta.env.VITE_API_BASE ?? 'http://localhost:5100').replace(
   /\/$/,
@@ -267,10 +271,52 @@ export const httpApi: FusionApi = {
     const name = await nameOf(page.items.map((a) => a.acknowledgedBy))
     return { items: page.items.map((a) => toAlert(a, name)), nextCursor: page.nextCursor }
   },
+  alert: async (id) => {
+    const a = await request<AlertDto>(`/alerts/${enc(id)}`)
+    return toAlert(a, await nameOf([a.acknowledgedBy]))
+  },
   acknowledgeAlert: async (id) => {
     const a = await request<AlertDto>(`/alerts/${enc(id)}/ack`, { method: 'POST' })
     return toAlert(a, await nameOf([a.acknowledgedBy]))
   },
+  alertDeliveries: async (id) =>
+    (await request<MessageDto[]>(`/alerts/${enc(id)}/messages`)).map(toDelivery),
+
+  notifications: async (p) =>
+    (
+      await request<MessageDto[]>('/notifications', {
+        query: { unread: p?.unread ? 'true' : undefined },
+      })
+    ).map(toDelivery),
+  markNotificationRead: async (id) =>
+    toDelivery(await request<MessageDto>(`/notifications/${enc(id)}/read`, { method: 'POST' })),
+
+  dutyRoster: async (p) =>
+    (await request<ShiftDto[]>('/duty-roster', { query: { from: p?.from, to: p?.to } })).map(
+      toShift,
+    ),
+  onDutyNow: async () =>
+    (await request<{ tier: DutyTier; people: ShiftDto[] }[]>('/duty-roster/now')).map((t) => ({
+      tier: t.tier,
+      people: t.people.map(toShift),
+    })),
+  addShift: async (input) =>
+    toShift(await request<ShiftDto>('/duty-roster/shifts', { method: 'POST', body: input })),
+  removeShift: async (id) => {
+    await request<void>(`/duty-roster/shifts/${enc(id)}`, { method: 'DELETE' })
+  },
+  searchPeople: async (q) =>
+    (
+      await request<(PersonContact & { username: string | null; email: string | null })[]>(
+        '/people/search',
+        { query: { q } },
+      )
+    ).map((p) => ({
+      id: p.id,
+      name: p.name,
+      username: p.username ?? undefined,
+      email: p.email ?? undefined,
+    })),
 
   cases: async (p) => {
     const page = await request<PageDto<CaseDto>>('/cases', {

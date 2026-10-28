@@ -21,6 +21,11 @@ import type {
   CaseSummary,
   Claim,
   Confidence,
+  Delivery,
+  DeliveryChannel,
+  DeliveryStatus,
+  DutyShift,
+  DutyTier,
   EvidenceItem,
   Finding,
   StatementChannel,
@@ -255,9 +260,83 @@ export interface AlertDto {
   status: 'open' | 'acknowledged'
   raisedAt: string
   level: number
+  tier?: DutyTier
   lastEscalatedAt: string | null
   acknowledgedBy: string | null
+  acknowledgedAt?: string | null
+  version?: number
 }
+
+export interface ShiftDto {
+  id: string
+  tier: DutyTier
+  userId: string
+  name: string
+  startsAt: string
+  endsAt: string
+  email: string | null
+  phone: string | null
+  createdBy: string
+}
+
+export interface MessageDto {
+  id: string
+  alertId: string
+  reference: string
+  level: number
+  recipientId: string
+  recipientName: string
+  channel: DeliveryChannel
+  address: string | null
+  subject: string
+  link: string
+  status: DeliveryStatus
+  attempts: number
+  lastError: string | null
+  createdAt: string
+  sentAt: string | null
+  readAt: string | null
+  fallbackFor: string | null
+}
+
+export function toShift(s: ShiftDto): DutyShift {
+  return {
+    id: s.id,
+    tier: s.tier,
+    userId: s.userId,
+    name: s.name,
+    startsAt: s.startsAt,
+    endsAt: s.endsAt,
+    email: s.email ?? undefined,
+    phone: s.phone ?? undefined,
+    createdBy: s.createdBy,
+  }
+}
+
+export function toDelivery(m: MessageDto): Delivery {
+  return {
+    id: m.id,
+    alertId: m.alertId,
+    reference: m.reference,
+    level: m.level,
+    recipientId: m.recipientId,
+    recipientName: m.recipientName,
+    channel: m.channel,
+    address: m.address ?? undefined,
+    subject: m.subject,
+    link: m.link,
+    status: m.status,
+    attempts: m.attempts,
+    lastError: m.lastError ?? undefined,
+    createdAt: m.createdAt,
+    sentAt: m.sentAt ?? undefined,
+    readAt: m.readAt ?? undefined,
+    fallbackFor: m.fallbackFor ?? undefined,
+  }
+}
+
+/** "ALT-" and the last six hex digits of the id, as the alerts service writes it in messages. */
+export const alertReference = (id: string) => `ALT-${id.replace(/-/g, '').slice(-6).toUpperCase()}`
 
 export interface SourceDto {
   id: string
@@ -868,8 +947,13 @@ export function toAlert(a: AlertDto, name: NameOf): Alert {
     raisedAt: a.raisedAt,
     rule: `Rule ${shortId(a.ruleId)}`,
     escalationLevel: a.level,
+    tier: a.tier,
+    lastEscalatedAt: a.lastEscalatedAt ?? undefined,
     acknowledgedBy: a.acknowledgedBy ? name(a.acknowledgedBy) : undefined,
+    acknowledgedAt: a.acknowledgedAt ?? undefined,
     caseRef: a.caseId ? `CASE ${shortId(a.caseId)}` : undefined,
+    reference: alertReference(a.id),
+    etag: a.version === undefined ? undefined : `"v${a.version}"`,
   }
 }
 

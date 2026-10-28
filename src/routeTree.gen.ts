@@ -16,9 +16,11 @@ import { Route as ApprovalsRouteImport } from './routes/approvals'
 import { Route as CollectionRouteImport } from './routes/collection'
 import { Route as FeedRouteImport } from './routes/feed'
 import { Route as ReviewRouteImport } from './routes/review'
+import { Route as RosterRouteImport } from './routes/roster'
 import { Route as SearchRouteImport } from './routes/search'
 import { Route as TriageRouteImport } from './routes/triage'
 import { Route as WallRouteImport } from './routes/wall'
+import { Route as AlertsAlertIdRouteImport } from './routes/alerts/$alertId'
 import { Route as CasesIndexRouteImport } from './routes/cases/index'
 import { Route as CasesCaseIdRouteImport } from './routes/cases/$caseId'
 import { Route as ProductsIndexRouteImport } from './routes/products/index'
@@ -59,6 +61,11 @@ const ReviewRoute = ReviewRouteImport.update({
   path: '/review',
   getParentRoute: () => rootRouteImport,
 } as any)
+const RosterRoute = RosterRouteImport.update({
+  id: '/roster',
+  path: '/roster',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const SearchRoute = SearchRouteImport.update({
   id: '/search',
   path: '/search',
@@ -72,6 +79,11 @@ const TriageRoute = TriageRouteImport.update({
 const WallRoute = WallRouteImport.update({
   id: '/wall',
   path: '/wall',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AlertsAlertIdRoute = AlertsAlertIdRouteImport.update({
+  id: '/alerts/$alertId',
+  path: '/alerts/$alertId',
   getParentRoute: () => rootRouteImport,
 } as any)
 const CasesIndexRoute = CasesIndexRouteImport.update({
@@ -103,9 +115,11 @@ export interface FileRoutesByFullPath {
   '/collection': typeof CollectionRoute
   '/feed': typeof FeedRoute
   '/review': typeof ReviewRoute
+  '/roster': typeof RosterRoute
   '/search': typeof SearchRoute
   '/triage': typeof TriageRoute
   '/wall': typeof WallRoute
+  '/alerts/$alertId': typeof AlertsAlertIdRoute
   '/cases/$caseId': typeof CasesCaseIdRoute
   '/products/$productId': typeof ProductsProductIdRoute
   '/cases/': typeof CasesIndexRoute
@@ -119,9 +133,11 @@ export interface FileRoutesByTo {
   '/collection': typeof CollectionRoute
   '/feed': typeof FeedRoute
   '/review': typeof ReviewRoute
+  '/roster': typeof RosterRoute
   '/search': typeof SearchRoute
   '/triage': typeof TriageRoute
   '/wall': typeof WallRoute
+  '/alerts/$alertId': typeof AlertsAlertIdRoute
   '/cases/$caseId': typeof CasesCaseIdRoute
   '/products/$productId': typeof ProductsProductIdRoute
   '/cases': typeof CasesIndexRoute
@@ -136,9 +152,11 @@ export interface FileRoutesById {
   '/collection': typeof CollectionRoute
   '/feed': typeof FeedRoute
   '/review': typeof ReviewRoute
+  '/roster': typeof RosterRoute
   '/search': typeof SearchRoute
   '/triage': typeof TriageRoute
   '/wall': typeof WallRoute
+  '/alerts/$alertId': typeof AlertsAlertIdRoute
   '/cases/$caseId': typeof CasesCaseIdRoute
   '/products/$productId': typeof ProductsProductIdRoute
   '/cases/': typeof CasesIndexRoute
@@ -154,9 +172,11 @@ export interface FileRouteTypes {
     | '/collection'
     | '/feed'
     | '/review'
+    | '/roster'
     | '/search'
     | '/triage'
     | '/wall'
+    | '/alerts/$alertId'
     | '/cases/$caseId'
     | '/products/$productId'
     | '/cases/'
@@ -170,9 +190,11 @@ export interface FileRouteTypes {
     | '/collection'
     | '/feed'
     | '/review'
+    | '/roster'
     | '/search'
     | '/triage'
     | '/wall'
+    | '/alerts/$alertId'
     | '/cases/$caseId'
     | '/products/$productId'
     | '/cases'
@@ -186,9 +208,11 @@ export interface FileRouteTypes {
     | '/collection'
     | '/feed'
     | '/review'
+    | '/roster'
     | '/search'
     | '/triage'
     | '/wall'
+    | '/alerts/$alertId'
     | '/cases/$caseId'
     | '/products/$productId'
     | '/cases/'
@@ -203,9 +227,11 @@ export interface RootRouteChildren {
   CollectionRoute: typeof CollectionRoute
   FeedRoute: typeof FeedRoute
   ReviewRoute: typeof ReviewRoute
+  RosterRoute: typeof RosterRoute
   SearchRoute: typeof SearchRoute
   TriageRoute: typeof TriageRoute
   WallRoute: typeof WallRoute
+  AlertsAlertIdRoute: typeof AlertsAlertIdRoute
   CasesCaseIdRoute: typeof CasesCaseIdRoute
   ProductsProductIdRoute: typeof ProductsProductIdRoute
   CasesIndexRoute: typeof CasesIndexRoute
@@ -263,6 +289,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ReviewRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/roster': {
+      id: '/roster'
+      path: '/roster'
+      fullPath: '/roster'
+      preLoaderRoute: typeof RosterRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/search': {
       id: '/search'
       path: '/search'
@@ -282,6 +315,13 @@ declare module '@tanstack/react-router' {
       path: '/wall'
       fullPath: '/wall'
       preLoaderRoute: typeof WallRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/alerts/$alertId': {
+      id: '/alerts/$alertId'
+      path: '/alerts/$alertId'
+      fullPath: '/alerts/$alertId'
+      preLoaderRoute: typeof AlertsAlertIdRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/cases/': {
@@ -323,9 +363,11 @@ const rootRouteChildren: RootRouteChildren = {
   CollectionRoute: CollectionRoute,
   FeedRoute: FeedRoute,
   ReviewRoute: ReviewRoute,
+  RosterRoute: RosterRoute,
   SearchRoute: SearchRoute,
   TriageRoute: TriageRoute,
   WallRoute: WallRoute,
+  AlertsAlertIdRoute: AlertsAlertIdRoute,
   CasesCaseIdRoute: CasesCaseIdRoute,
   ProductsProductIdRoute: ProductsProductIdRoute,
   CasesIndexRoute: CasesIndexRoute,

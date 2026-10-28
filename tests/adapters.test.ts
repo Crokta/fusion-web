@@ -4,6 +4,7 @@ import {
   type AuditEntryDto,
   type CaseDto,
   type EvidenceDto,
+  type MessageDto,
   type ProductDto,
   type SourceViewDto,
   type SupportCheckDto,
@@ -12,7 +13,9 @@ import {
   evidenceLabel,
   fromPriority,
   policyLabel,
+  alertReference,
   toAlert,
+  toDelivery,
   toApproval,
   toAuditEvent,
   toCaseDetail,
@@ -598,5 +601,79 @@ describe('briefs', () => {
       label: undefined,
     })
     expect(c.citable.map((x) => x.label)).toEqual(['F1'])
+  })
+})
+
+describe('alert delivery', () => {
+  it('names an alert the way its messages do', () => {
+    expect(alertReference('0199f0a2-7c1e-7d2b-9a41-5b3c2d1e0f9a')).toBe('ALT-1E0F9A')
+  })
+
+  it('reads the tier, the version and the escalation from an alert', () => {
+    const a = toAlert(
+      {
+        id: '0199f0a2-7c1e-7d2b-9a41-5b3c2d1e0f9a',
+        ruleId: 'r1',
+        severity: 'critical',
+        title: 'Evidence integrity failure',
+        caseId: null,
+        sourceEventType: 'IntegrityFailed',
+        status: 'open',
+        raisedAt: '2026-10-27T09:00:00Z',
+        level: 1,
+        tier: 'supervisor',
+        lastEscalatedAt: '2026-10-27T09:15:00Z',
+        acknowledgedBy: null,
+        version: 1,
+      },
+      (id) => people[id ?? ''] ?? '—',
+    )
+    expect(a).toMatchObject({
+      status: 'escalated',
+      tier: 'supervisor',
+      escalationLevel: 1,
+      lastEscalatedAt: '2026-10-27T09:15:00Z',
+      reference: 'ALT-1E0F9A',
+      etag: '"v1"',
+    })
+  })
+
+  it('maps a failed SMS and the email standing in for it', () => {
+    const base: MessageDto = {
+      id: 'm1',
+      alertId: 'a1',
+      reference: 'ALT-1E0F9A',
+      level: 0,
+      recipientId: 'u-ada',
+      recipientName: 'Ada Analyst',
+      channel: 'sms',
+      address: '+9990000001',
+      subject: '[CRITICAL] alert',
+      link: 'http://localhost:5173/alerts/a1',
+      status: 'failed',
+      attempts: 4,
+      lastError: 'The SMS stub refuses numbers starting +999.',
+      createdAt: '2026-10-27T09:00:00Z',
+      sentAt: null,
+      readAt: null,
+      fallbackFor: null,
+    }
+    expect(toDelivery(base)).toMatchObject({
+      status: 'failed',
+      attempts: 4,
+      fallbackFor: undefined,
+    })
+    const email = toDelivery({
+      ...base,
+      id: 'm2',
+      channel: 'email',
+      address: 'ada@hfc.local',
+      status: 'sent',
+      attempts: 1,
+      lastError: null,
+      sentAt: '2026-10-27T09:08:00Z',
+      fallbackFor: 'm1',
+    })
+    expect(email).toMatchObject({ channel: 'email', fallbackFor: 'm1', lastError: undefined })
   })
 })

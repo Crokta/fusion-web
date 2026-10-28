@@ -400,6 +400,14 @@ function AlertRow({
         <div className="mt-1.5 flex items-center gap-2 text-[11px] text-ink-faint">
           <span className="font-mono">{a.rule}</span>
           {a.caseRef && <CaseLink caseRef={a.caseRef} />}
+          <Link
+            to="/alerts/$alertId"
+            params={{ alertId: a.id }}
+            onClick={(e) => e.stopPropagation()}
+            className="ml-auto text-cyan/90 hover:text-white hover:underline"
+          >
+            Deliveries →
+          </Link>
         </div>
       </button>
       {needsAck && (

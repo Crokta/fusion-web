@@ -1,6 +1,7 @@
 import {
   Archive,
   BarChart3,
+  CalendarClock,
   ClipboardCheck,
   FileText,
   FolderKanban,
@@ -50,6 +51,12 @@ export const NAV: NavGroup[] = [
         description: 'Briefs drafted from approved findings, support-checked and released as PDF.',
       },
       { to: '/wall', label: 'Wall', icon: MonitorPlay, hint: '4' },
+      {
+        to: '/roster',
+        label: 'Duty roster',
+        icon: CalendarClock,
+        description: 'Who alerts go to at each tier, and when; escalation follows it.',
+      },
     ],
   },
   {

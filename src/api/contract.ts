@@ -9,6 +9,11 @@ import type {
   CaseState,
   CaseSummary,
   ClaimOutcomeInput,
+  Delivery,
+  DutyShift,
+  OnDuty,
+  PersonContact,
+  ShiftInput,
   FindingInput,
   StatementInput,
   ItemDetail,
@@ -47,7 +52,22 @@ export interface FusionApi {
   sendToTriage(storyGroupId: string): Promise<void>
 
   alerts(params?: { status?: string }): Promise<Page<Alert>>
+  alert(id: string): Promise<Alert>
   acknowledgeAlert(id: string): Promise<Alert>
+  /** Every message the alert produced, on every channel, with attempts and errors. */
+  alertDeliveries(id: string): Promise<Delivery[]>
+
+  /** The caller's own in-app notices, newest first. */
+  notifications(params?: { unread?: boolean }): Promise<Delivery[]>
+  markNotificationRead(id: string): Promise<Delivery>
+
+  /** Shifts overlapping [from, to); by default the last 12 hours to a week ahead. */
+  dutyRoster(params?: { from?: string; to?: string }): Promise<DutyShift[]>
+  onDutyNow(): Promise<OnDuty[]>
+  addShift(input: ShiftInput): Promise<DutyShift>
+  removeShift(id: string): Promise<void>
+  /** Directory search for the roster's person picker (roster.manage). */
+  searchPeople(q: string): Promise<PersonContact[]>
 
   sources(params?: { status?: SourceStatus }): Promise<Page<SourceRecord>>
   proposeSource(input: SourceInput): Promise<SourceRecord>

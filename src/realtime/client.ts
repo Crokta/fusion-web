@@ -37,6 +37,7 @@ export type ServerEventName = LiveEventName | 'case.changed' | 'approval.changed
 const SERVER_EVENTS: ServerEventName[] = [
   'story.published',
   'alert.raised',
+  'notification.delivered',
   'job.progress',
   'wall.state',
   'case.changed',
@@ -83,6 +84,7 @@ export function fromServer<E extends LiveEventName>(
 export const LIVE_EVENTS: LiveEventName[] = [
   'story.published',
   'alert.raised',
+  'notification.delivered',
   'job.progress',
   'wall.state',
 ]

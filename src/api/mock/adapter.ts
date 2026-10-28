@@ -1,9 +1,14 @@
 import type { FusionApi } from '../contract'
 import { ApiError, type ProblemCode } from '../problem'
 import { session } from '../session'
+import { alertReference } from '../adapters'
 import type {
   Alert,
   Brief,
+  Delivery,
+  DeliveryChannel,
+  DutyShift,
+  DutyTier,
   CaseDetail,
   SupportCheck,
   LiveEventMap,
@@ -34,6 +39,8 @@ const db = {
   /** Assessment written in this session, laid over the fixture case. */
   assessment: new Map<string, Partial<CaseDetail>>(),
   alerts: clone(fx.alerts),
+  shifts: [] as DutyShift[],
+  messages: [] as Delivery[],
   reviews: clone(fx.reviews),
   approvals: clone(fx.approvals),
   policies: clone(fx.policies),
@@ -41,6 +48,66 @@ const db = {
   publications: clone(fx.wallPublications),
   wall: fx.stateFromPreset(fx.wallPresets[0]!, 16, 'Zainab Bello'),
   signals: 0,
+}
+
+// A day's roster around now, and the notices the fixture alerts would have sent.
+{
+  const h = 3600_000
+  const start = new Date(Math.floor(Date.now() / h) * h - 4 * h)
+  const end = new Date(start.getTime() + 12 * h)
+  const on = (tier: DutyTier, p: { id: string; name: string }, email?: string, phone?: string) =>
+    db.shifts.push({
+      id: `sh-${tier}-${p.id}`,
+      tier,
+      userId: p.id,
+      name: p.name,
+      startsAt: start.toISOString(),
+      endsAt: end.toISOString(),
+      email,
+      phone,
+      createdBy: fx.people.zainab.name,
+    })
+  on('analyst', fx.people.dirk, 'dirk.adebayo@fusion.local', '+2348031234567')
+  on('analyst', fx.people.amaka, 'amaka.nwosu@fusion.local')
+  on('supervisor', fx.people.zainab, 'zainab.bello@fusion.local', '+9990000001')
+  on('centre_lead', fx.people.halima, 'halima.yusuf@fusion.local')
+  for (const a of db.alerts) {
+    for (const shift of db.shifts.filter((s) => s.tier === 'analyst')) {
+      const channels: DeliveryChannel[] = [
+        'in_app',
+        'email',
+        ...(shift.phone ? ['sms' as const] : []),
+      ]
+      for (const channel of channels)
+        db.messages.push(composeMessage(a, shift, channel, a.status === 'acknowledged'))
+    }
+  }
+}
+
+function composeMessage(
+  a: Alert,
+  to: DutyShift,
+  channel: DeliveryChannel,
+  read: boolean,
+): Delivery {
+  const reference = alertReference(a.id)
+  return {
+    id: `msg-${a.id}-${to.userId}-${channel}`,
+    alertId: a.id,
+    reference,
+    level: a.escalationLevel,
+    recipientId: to.userId,
+    recipientName: to.name,
+    channel,
+    address: channel === 'email' ? to.email : channel === 'sms' ? to.phone : undefined,
+    subject: `[${a.severity.toUpperCase()}] Homeland Fusion Centre alert ${reference}`,
+    link: `${location.origin}/alerts/${a.id}`,
+    status: 'sent',
+    attempts: 1,
+    createdAt: a.raisedAt,
+    sentAt: a.raisedAt,
+    readAt: read ? a.raisedAt : undefined,
+  }
 }
 
 // ---------------------------------------------------------------- event bus (mock hub)
@@ -68,6 +135,9 @@ async function delay<T>(value: () => T): Promise<T> {
   await new Promise((r) => setTimeout(r, latency()))
   return clone(value())
 }
+
+const tierAt = (level: number): DutyTier =>
+  level <= 0 ? 'analyst' : level === 1 ? 'supervisor' : 'centre_lead'
 
 function refuse(code: ProblemCode, title: string, status = 403, detail?: string): never {
   audit('refused', title, detail ?? code)
@@ -441,6 +511,71 @@ export const mockApi: FusionApi = {
       items: p?.status ? db.alerts.filter((a) => a.status === p.status) : db.alerts,
       nextCursor: null,
     })),
+  alert: (id) =>
+    delay(() => {
+      const a = db.alerts.find((x) => x.id === id)
+      if (!a) refuse('not_found', 'Alert not found', 404)
+      return { ...a, reference: alertReference(a.id), tier: tierAt(a.escalationLevel) }
+    }),
+  alertDeliveries: (id) => delay(() => db.messages.filter((m) => m.alertId === id)),
+  notifications: (p) =>
+    delay(() =>
+      db.messages
+        .filter((m) => m.channel === 'in_app' && m.recipientId === me().id)
+        .filter((m) => !p?.unread || !m.readAt)
+        .sort((x, y) => y.createdAt.localeCompare(x.createdAt)),
+    ),
+  markNotificationRead: (id) =>
+    delay(() => {
+      const m = db.messages.find((x) => x.id === id && x.recipientId === me().id)
+      if (!m) refuse('not_found', 'No such notification', 404)
+      m.readAt ??= new Date().toISOString()
+      return m
+    }),
+  dutyRoster: () =>
+    delay(() => [...db.shifts].sort((x, y) => x.startsAt.localeCompare(y.startsAt))),
+  onDutyNow: () =>
+    delay(() => {
+      const now = Date.now()
+      return (['analyst', 'supervisor', 'centre_lead'] as DutyTier[]).map((tier) => ({
+        tier,
+        people: db.shifts.filter(
+          (s) => s.tier === tier && Date.parse(s.startsAt) <= now && now < Date.parse(s.endsAt),
+        ),
+      }))
+    }),
+  addShift: (input) =>
+    delay(() => {
+      requireRole(['supervisor', 'centre_lead'], 'Managing the duty roster')
+      const hours = (Date.parse(input.endsAt) - Date.parse(input.startsAt)) / 3600_000
+      if (!(hours > 0)) refuse('validation_failed', 'A shift ends after it starts', 400)
+      if (hours > 24) refuse('validation_failed', 'A shift is at most 24 hours', 400)
+      const shift: DutyShift = { ...input, id: `sh-${crypto.randomUUID()}`, createdBy: devName() }
+      db.shifts.push(shift)
+      audit('allowed', 'roster.add', `${shift.name} · ${shift.tier}`)
+      return shift
+    }),
+  removeShift: (id) =>
+    delay(() => {
+      requireRole(['supervisor', 'centre_lead'], 'Managing the duty roster')
+      const i = db.shifts.findIndex((s) => s.id === id)
+      if (i < 0) refuse('not_found', 'Shift not found', 404)
+      const [gone] = db.shifts.splice(i, 1)
+      audit('allowed', 'roster.remove', `${gone!.name} · ${gone!.tier}`)
+    }),
+  searchPeople: (q) =>
+    delay(() => {
+      requireRole(['supervisor', 'centre_lead'], 'Searching the directory')
+      const text = q.trim().toLowerCase()
+      if (text.length < 2) return []
+      return Object.values(fx.people)
+        .filter((p) => p.name.toLowerCase().includes(text))
+        .map((p) => ({
+          id: p.id,
+          name: p.name,
+          email: `${p.name.toLowerCase().replace(/\s+/g, '.')}@fusion.local`,
+        }))
+    }),
   acknowledgeAlert: (id) =>
     delay(() => {
       const a = db.alerts.find((x) => x.id === id)

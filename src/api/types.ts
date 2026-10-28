@@ -127,9 +127,89 @@ export interface Alert {
   rule: string
   /** Escalation tier currently responsible, 0 = duty analyst. */
   escalationLevel: number
+  /** Who that tier is: analyst, supervisor or centre lead. */
+  tier?: DutyTier
   escalatesAt?: string
+  lastEscalatedAt?: string
   acknowledgedBy?: string
+  acknowledgedAt?: string
   caseRef?: string
+  /** "ALT-…": what a message about this alert calls it. */
+  reference?: string
+  etag?: string
+}
+
+// ---------------------------------------------------------------- duty roster and delivery
+
+export type DutyTier = 'analyst' | 'supervisor' | 'centre_lead'
+
+export const TIER_LABEL: Record<DutyTier, string> = {
+  analyst: 'Duty analyst',
+  supervisor: 'Supervisor',
+  centre_lead: 'Centre lead',
+}
+
+export const TIERS: DutyTier[] = ['analyst', 'supervisor', 'centre_lead']
+
+export interface DutyShift {
+  id: string
+  tier: DutyTier
+  userId: string
+  name: string
+  startsAt: string
+  endsAt: string
+  email?: string
+  /** E.164, e.g. +2348012345678. */
+  phone?: string
+  createdBy: string
+}
+
+export interface ShiftInput {
+  tier: DutyTier
+  userId: string
+  name: string
+  startsAt: string
+  endsAt: string
+  email?: string
+  phone?: string
+}
+
+export interface OnDuty {
+  tier: DutyTier
+  people: DutyShift[]
+}
+
+export type DeliveryChannel = 'in_app' | 'email' | 'sms'
+export type DeliveryStatus = 'pending' | 'sent' | 'failed'
+
+/** One message about one alert to one person on one channel. In-app ones are the notices. */
+export interface Delivery {
+  id: string
+  alertId: string
+  reference: string
+  level: number
+  recipientId: string
+  recipientName: string
+  channel: DeliveryChannel
+  address?: string
+  subject: string
+  link: string
+  status: DeliveryStatus
+  attempts: number
+  lastError?: string
+  createdAt: string
+  sentAt?: string
+  readAt?: string
+  /** Set on an email sent because this SMS failed. */
+  fallbackFor?: string
+}
+
+/** Someone found in the directory, to put on the roster. */
+export interface PersonContact {
+  id: string
+  name: string
+  username?: string
+  email?: string
 }
 
 // ---------------------------------------------------------------- cases
@@ -601,6 +681,8 @@ export interface JobProgress {
 export interface LiveEventMap {
   'story.published': StoryGroup
   'alert.raised': Alert
+  /** A notice reached someone. The payload is ids only; each screen refetches its own. */
+  'notification.delivered': { alertId: string; channel: DeliveryChannel }
   'job.progress': JobProgress
   'wall.state': WallState
 }

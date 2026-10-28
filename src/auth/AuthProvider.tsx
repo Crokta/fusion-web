@@ -234,6 +234,10 @@ export const can = {
   writeCase: (r: Role) => r === 'analyst' || r === 'supervisor',
   /** triage.work in permissions.yaml: reading the queue and promoting from it. */
   workTriage: (r: Role) => r === 'analyst' || r === 'supervisor',
+  /** alert.read and alert.ack in permissions.yaml: the same three roles. */
+  ackAlert: (r: Role) => r === 'analyst' || r === 'supervisor' || r === 'centre_lead',
+  /** roster.manage in permissions.yaml. */
+  manageRoster: (r: Role) => r === 'supervisor' || r === 'centre_lead',
   changePolicy: (r: Role) => r === 'admin' || r === 'centre_lead',
   viewAudit: (r: Role) => r === 'admin' || r === 'centre_lead' || r === 'supervisor',
 }

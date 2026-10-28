@@ -1,6 +1,5 @@
 import { Link, Outlet, useNavigate, useRouterState } from '@tanstack/react-router'
 import {
-  Bell,
   ChevronsLeft,
   ChevronsRight,
   Command,
@@ -9,7 +8,7 @@ import {
   Search,
 } from 'lucide-react'
 import { useEffect, useState } from 'react'
-import { useAlerts, useApprovals, useReviews } from '@/api/queries'
+import { useApprovals, useReviews } from '@/api/queries'
 import { USE_MOCKS } from '@/api'
 import { Kbd, IconButton } from '@/components/ui'
 import { cn } from '@/lib/cn'
@@ -20,6 +19,7 @@ import { ContextRail } from './ContextRail'
 import { NAV, NAV_ITEMS } from './nav'
 import { useShell } from './ShellContext'
 import { UserMenu } from './UserMenu'
+import { NotificationBell } from '@/features/alerts/NotificationBell'
 import { FusionSearchOverlay } from '@/features/search/FusionSearch'
 import { ItemDrawer } from '@/features/search/ItemDrawer'
 
@@ -75,9 +75,6 @@ export function AppShell() {
 function TopBar() {
   const shell = useShell()
   const { status } = useLive()
-  const alerts = useAlerts()
-  const openAlerts =
-    alerts.data?.items.filter((a) => a.status === 'open' || a.status === 'escalated').length ?? 0
   const [now, setNow] = useState(() => new Date())
   useEffect(() => {
     const t = setInterval(() => setNow(new Date()), 1000)
@@ -188,20 +185,7 @@ function TopBar() {
         </span>
       </div>
 
-      <Link
-        to="/"
-        hash="alerts"
-        className="relative inline-grid size-8 place-items-center rounded-md text-ink-muted transition-colors hover:bg-white/[0.05] hover:text-ink"
-        aria-label={`${openAlerts} open alerts`}
-        title="Open alerts"
-      >
-        <Bell size={16} strokeWidth={1.9} />
-        {openAlerts > 0 && (
-          <span className="num absolute -top-0.5 -right-0.5 grid h-4 min-w-4 place-items-center rounded-full bg-red px-1 text-[9.5px] font-bold text-white shadow-[0_0_10px_rgb(255_92_114/.6)]">
-            {openAlerts}
-          </span>
-        )}
-      </Link>
+      <NotificationBell />
       <IconButton
         icon={shell.contextOpen ? PanelRightClose : PanelRightOpen}
         label={shell.contextOpen ? 'Hide context rail ( ] )' : 'Show context rail ( ] )'}
