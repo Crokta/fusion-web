@@ -3,9 +3,11 @@ import {
   ChevronsLeft,
   ChevronsRight,
   Command,
+  Moon,
   PanelRightClose,
   PanelRightOpen,
   Search,
+  Sun,
 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { useApprovals, useReviews } from '@/api/queries'
@@ -13,6 +15,7 @@ import { USE_MOCKS } from '@/api'
 import { Kbd, IconButton } from '@/components/ui'
 import { cn } from '@/lib/cn'
 import { isMac, isTyping, useHotkey } from '@/lib/hooks'
+import { useTheme } from '@/lib/theme'
 import { useLive } from '@/realtime/LiveProvider'
 import { CommandPalette } from './CommandPalette'
 import { ContextRail } from './ContextRail'
@@ -88,7 +91,7 @@ function TopBar() {
       dot: 'bg-amber',
     },
     live: { label: 'Live', cls: 'text-green ring-green/30 bg-green/[0.07]', dot: 'bg-green' },
-    connecting: { label: 'Connecting', cls: 'text-ink-muted ring-white/10', dot: 'bg-ink-muted' },
+    connecting: { label: 'Connecting', cls: 'text-ink-muted ring-tint/10', dot: 'bg-ink-muted' },
     reconnecting: { label: 'Reconnecting', cls: 'text-amber ring-amber/30', dot: 'bg-amber' },
     offline: { label: 'Hub offline', cls: 'text-red ring-red/30 bg-red/[0.07]', dot: 'bg-red' },
   }[status]
@@ -185,6 +188,7 @@ function TopBar() {
         </span>
       </div>
 
+      <ThemeToggle />
       <NotificationBell />
       <IconButton
         icon={shell.contextOpen ? PanelRightClose : PanelRightOpen}
@@ -194,6 +198,18 @@ function TopBar() {
       />
       <UserMenu />
     </header>
+  )
+}
+
+/** Light for desks in daylight, dark for the watch floor; kept per browser (src/lib/theme.ts). */
+function ThemeToggle() {
+  const { theme, toggle } = useTheme()
+  return (
+    <IconButton
+      icon={theme === 'dark' ? Sun : Moon}
+      label={theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'}
+      onClick={toggle}
+    />
   )
 }
 
@@ -244,7 +260,7 @@ function LeftRail() {
                         'group relative flex h-8 items-center gap-2.5 rounded-md px-2.5 text-[12.5px] font-medium transition-colors',
                         active
                           ? 'bg-cyan/[0.09] text-ink'
-                          : 'text-ink-muted hover:bg-white/[0.035] hover:text-ink-2',
+                          : 'text-ink-muted hover:bg-tint/[0.035] hover:text-ink-2',
                       )}
                     >
                       {active && (
@@ -303,7 +319,7 @@ function LeftRail() {
         <button
           type="button"
           onClick={() => shell.setRailCollapsed((v) => !v)}
-          className="flex h-7 w-full items-center gap-2 rounded-md px-2.5 text-[11.5px] text-ink-faint hover:bg-white/[0.04] hover:text-ink-muted"
+          className="flex h-7 w-full items-center gap-2 rounded-md px-2.5 text-[11.5px] text-ink-faint hover:bg-tint/[0.04] hover:text-ink-muted"
           aria-label={collapsed ? 'Expand navigation' : 'Collapse navigation'}
         >
           {collapsed ? <ChevronsRight size={15} /> : <ChevronsLeft size={15} />}

@@ -90,7 +90,7 @@ function OnDutyNow() {
             bodyClassName="px-4 py-3"
           >
             {now.isPending ? (
-              <div className="h-10 animate-pulse rounded bg-white/[0.03]" />
+              <div className="h-10 animate-pulse rounded bg-tint/[0.03]" />
             ) : people.length === 0 ? (
               <p className="flex items-start gap-1.5 text-[12px] text-amber">
                 <TriangleAlert size={13} className="mt-0.5 shrink-0" />
@@ -162,9 +162,7 @@ function Shifts({ manage }: { manage: boolean }) {
       ) : (
         days.map((day) => (
           <section key={day}>
-            <h3 className="eyebrow border-b border-line-soft bg-white/[0.015] px-4 py-1.5">
-              {day}
-            </h3>
+            <h3 className="eyebrow border-b border-line-soft bg-tint/[0.015] px-4 py-1.5">{day}</h3>
             <ul>
               {shifts
                 .filter((s) => dayLabel(s.startsAt) === day)
@@ -337,7 +335,7 @@ function AddShiftModal({ open, onClose }: { open: boolean; onClose: () => void }
                       <li key={p.id}>
                         <button
                           type="button"
-                          className="flex w-full items-baseline gap-2 px-3 py-1.5 text-left text-[12.5px] hover:bg-white/[0.05]"
+                          className="flex w-full items-baseline gap-2 px-3 py-1.5 text-left text-[12.5px] hover:bg-tint/[0.05]"
                           onClick={() => {
                             setPerson(p)
                             setEmail(p.email ?? '')

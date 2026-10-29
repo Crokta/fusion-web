@@ -360,7 +360,7 @@ function SentenceRow({
           'mt-1 grid size-6 shrink-0 place-items-center rounded-md font-mono text-[11px] ring-1',
           status === 'supported' && 'bg-green/10 text-green ring-green/30',
           status === 'unsupported' && 'bg-red/10 text-red ring-red/30',
-          status === 'unchecked' && 'bg-white/[0.04] text-ink-muted ring-white/[0.06]',
+          status === 'unchecked' && 'bg-tint/[0.04] text-ink-muted ring-tint/[0.06]',
         )}
         title={
           status === 'unchecked'
@@ -401,7 +401,7 @@ function SentenceRow({
                       'rounded-full px-2 py-0.5 font-mono text-[10.5px] ring-1 transition-colors',
                       on
                         ? 'bg-cyan/[0.12] text-ink ring-cyan/50'
-                        : 'text-ink-faint ring-white/10 hover:text-ink',
+                        : 'text-ink-faint ring-tint/10 hover:text-ink',
                     )}
                   >
                     {c.label}
@@ -411,7 +411,7 @@ function SentenceRow({
             : sentence.supportRefs.map((r) => (
                 <span
                   key={r}
-                  className="rounded-[4px] bg-white/[0.035] px-1.5 py-0.5 font-mono text-[10.5px] text-ink-muted ring-1 ring-white/[0.06]"
+                  className="rounded-[4px] bg-tint/[0.035] px-1.5 py-0.5 font-mono text-[10.5px] text-ink-muted ring-1 ring-tint/[0.06]"
                 >
                   {labelOf.get(r) ?? 'unknown'}
                 </span>

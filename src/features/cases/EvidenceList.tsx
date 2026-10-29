@@ -68,11 +68,11 @@ export function EvidenceList({
         return (
           <li
             key={e.id}
-            className="grid items-center gap-x-5 gap-y-2 px-4 py-3 transition-colors hover:bg-white/[0.02] @[680px]:grid-cols-[minmax(0,1fr)_auto]"
+            className="grid items-center gap-x-5 gap-y-2 px-4 py-3 transition-colors hover:bg-tint/[0.02] @[680px]:grid-cols-[minmax(14rem,1fr)_auto]"
           >
             <div className="flex min-w-0 items-start gap-3">
               <span
-                className="mt-0.5 grid size-7 shrink-0 place-items-center rounded-md bg-white/[0.04] text-cyan/80 ring-1 ring-white/[0.06]"
+                className="mt-0.5 grid size-7 shrink-0 place-items-center rounded-md bg-tint/[0.04] text-cyan/80 ring-1 ring-tint/[0.06]"
                 aria-hidden
               >
                 <Icon size={14} />
@@ -80,7 +80,9 @@ export function EvidenceList({
               <div className="min-w-0">
                 <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
                   <span className="text-[12.5px] font-medium text-ink">{e.label ?? e.title}</span>
-                  <span className="font-mono text-[10.5px] text-ink-faint">{e.ref}</span>
+                  <span className="whitespace-nowrap font-mono text-[10.5px] text-ink-faint">
+                    {e.ref}
+                  </span>
                 </div>
                 <p
                   className="mt-0.5 truncate text-[11.5px] text-ink-muted"

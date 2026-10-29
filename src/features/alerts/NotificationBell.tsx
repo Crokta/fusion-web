@@ -46,8 +46,8 @@ export function NotificationBell() {
         aria-label={`${unread.length} unread notifications`}
         title="Notifications"
         className={cn(
-          'relative inline-grid size-8 place-items-center rounded-md text-ink-muted transition-colors hover:bg-white/[0.05] hover:text-ink',
-          open && 'bg-white/[0.05] text-ink',
+          'relative inline-grid size-8 place-items-center rounded-md text-ink-muted transition-colors hover:bg-tint/[0.05] hover:text-ink',
+          open && 'bg-tint/[0.05] text-ink',
         )}
       >
         <Bell size={16} strokeWidth={1.9} />
@@ -93,7 +93,7 @@ export function NotificationBell() {
                       setOpen(false)
                       void navigate({ to: '/alerts/$alertId', params: { alertId: n.alertId } })
                     }}
-                    className="flex w-full gap-2.5 px-3.5 py-2.5 text-left transition-colors hover:bg-white/[0.04]"
+                    className="flex w-full gap-2.5 px-3.5 py-2.5 text-left transition-colors hover:bg-tint/[0.04]"
                   >
                     <span
                       className={cn(

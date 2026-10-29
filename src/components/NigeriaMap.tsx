@@ -149,8 +149,8 @@ export function NigeriaMap({
     >
       <defs>
         <radialGradient id={`land-${uid}`} cx="55%" cy="45%" r="70%">
-          <stop offset="0" stopColor="#123447" />
-          <stop offset="1" stopColor="#0a1c28" />
+          <stop offset="0" style={{ stopColor: 'var(--map-land-1)' }} />
+          <stop offset="1" style={{ stopColor: 'var(--map-land-2)' }} />
         </radialGradient>
         <pattern id={`grid-${uid}`} width="20" height="20" patternUnits="userSpaceOnUse">
           <path d="M20 0H0V20" fill="none" stroke="rgb(69 215 242 / .06)" strokeWidth="0.6" />
@@ -203,17 +203,17 @@ export function NigeriaMap({
                   height="4.8"
                   transform={`rotate(45 ${x} ${y})`}
                   fill="none"
-                  stroke="#cfe6ef"
+                  style={{ stroke: 'var(--map-capital)' }}
                   strokeWidth="1"
                 />
               ) : (
-                <circle cx={x} cy={y} r="1.6" fill="#8fb1c1" />
+                <circle cx={x} cy={y} r="1.6" style={{ fill: 'var(--map-city)' }} />
               )}
               <text
                 x={x + 6}
                 y={y + 3}
                 fontSize={dense ? 8 : 9}
-                fill="#9cb7c6"
+                style={{ fill: 'var(--map-label)' }}
                 fontFamily="var(--font-sans)"
                 fontWeight="500"
                 letterSpacing="0.02em"

@@ -152,12 +152,12 @@ export function CasesPage() {
                   onClick={() => open(c)}
                   className={cn(
                     GRID,
-                    'group w-full px-4 py-3 text-left transition-colors hover:bg-white/[0.025] focus-visible:-outline-offset-2',
+                    'group w-full px-4 py-3 text-left transition-colors hover:bg-tint/[0.025] focus-visible:-outline-offset-2',
                   )}
                 >
                   <span className="font-mono text-[12px] font-semibold text-cyan">{c.ref}</span>
                   <span className="min-w-0">
-                    <span className="block truncate text-[13px] font-medium text-ink group-hover:text-white">
+                    <span className="block truncate text-[13px] font-medium text-ink group-hover:text-ink">
                       {c.title}
                     </span>
                     <span className="block truncate text-[11.5px] text-ink-faint">

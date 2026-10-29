@@ -262,7 +262,7 @@ function SituationPanel({ events, loading }: { events?: MapEvent[]; loading: boo
                   navigate({ to: '/cases/$caseId', params: { caseId: e.caseRef.toLowerCase() } })
                 }
                 className={cn(
-                  'flex w-full items-start gap-2.5 rounded-md px-2.5 py-2 text-left transition-colors hover:bg-white/[0.035]',
+                  'flex w-full items-start gap-2.5 rounded-md px-2.5 py-2 text-left transition-colors hover:bg-tint/[0.035]',
                   selected?.id === e.id && 'bg-cyan/[0.07] ring-1 ring-cyan/25 ring-inset',
                 )}
               >
@@ -375,7 +375,7 @@ function AlertRow({
   return (
     <li
       className={cn(
-        'group relative flex animate-rise-in gap-3 border-b border-line-soft px-4 py-3 transition-colors last:border-0 hover:bg-white/[0.02]',
+        'group relative flex animate-rise-in gap-3 border-b border-line-soft px-4 py-3 transition-colors last:border-0 hover:bg-tint/[0.02]',
         a.status === 'escalated' && 'bg-red/[0.035]',
       )}
     >
@@ -404,7 +404,7 @@ function AlertRow({
             to="/alerts/$alertId"
             params={{ alertId: a.id }}
             onClick={(e) => e.stopPropagation()}
-            className="ml-auto text-cyan/90 hover:text-white hover:underline"
+            className="ml-auto text-cyan/90 hover:text-ink hover:underline"
           >
             Deliveries →
           </Link>
@@ -470,7 +470,7 @@ function LiveFeedPanel() {
                     state: g.caseRef ? 'Linked to case' : 'Untriaged',
                   })
                 }
-                className="flex w-full items-start gap-3 px-4 py-2.5 text-left transition-colors hover:bg-white/[0.02]"
+                className="flex w-full items-start gap-3 px-4 py-2.5 text-left transition-colors hover:bg-tint/[0.02]"
               >
                 <span
                   className={cn(
@@ -530,7 +530,7 @@ function CasesPanel() {
                 <Link
                   to="/cases/$caseId"
                   params={{ caseId: c.id }}
-                  className="flex items-center gap-3 px-4 py-2.5 transition-colors hover:bg-white/[0.02]"
+                  className="flex items-center gap-3 px-4 py-2.5 transition-colors hover:bg-tint/[0.02]"
                 >
                   <span className="w-[66px] shrink-0 font-mono text-[11px] font-medium text-cyan">
                     {c.ref}

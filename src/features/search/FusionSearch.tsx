@@ -207,7 +207,7 @@ function FacetButton({
         'mb-0.5 flex h-8.5 w-full items-center gap-2.5 rounded-md px-2.5 text-left text-[12.5px] transition-colors',
         active
           ? 'bg-cyan/[0.09] text-ink ring-1 ring-cyan/30 ring-inset'
-          : 'text-ink-muted hover:bg-white/[0.035] hover:text-ink-2',
+          : 'text-ink-muted hover:bg-tint/[0.035] hover:text-ink-2',
       )}
     >
       <Icon size={14} className={tone} aria-hidden />
@@ -261,7 +261,7 @@ function ResultCard({
         <button
           type="button"
           onClick={onPlace}
-          className="inline-flex h-5.5 items-center gap-1 rounded-full bg-white/[0.04] px-2 text-ink-2 ring-1 ring-white/[0.06] hover:text-cyan"
+          className="inline-flex h-5.5 items-center gap-1 rounded-full bg-tint/[0.04] px-2 text-ink-2 ring-1 ring-tint/[0.06] hover:text-cyan"
         >
           <MapPin size={11} /> {hit.place}
         </button>

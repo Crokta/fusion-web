@@ -39,7 +39,7 @@ function Row({
   return (
     <div
       className={cn(
-        'flex items-start gap-2 border-b border-white/[0.04] last:border-0',
+        'flex items-start gap-2 border-b border-tint/[0.04] last:border-0',
         big ? 'py-3' : 'py-[5px]',
       )}
     >
@@ -94,7 +94,7 @@ function Stat({
   return (
     <div
       className={cn(
-        'rounded-[5px] border border-white/[0.05] bg-white/[0.025]',
+        'rounded-[5px] border border-tint/[0.05] bg-tint/[0.025]',
         big ? 'p-4' : 'px-1.5 py-1',
       )}
     >
@@ -197,7 +197,7 @@ export function ScreenContent({ content, big, contextRef }: Props) {
             <div
               key={tag}
               className={cn(
-                'flex items-center gap-2 border-b border-white/[0.04]',
+                'flex items-center gap-2 border-b border-tint/[0.04]',
                 big ? 'py-3' : 'py-[4px]',
               )}
             >
@@ -245,7 +245,7 @@ export function ScreenContent({ content, big, contextRef }: Props) {
               </div>
               <div
                 className={cn(
-                  'mt-0.5 overflow-hidden rounded-full bg-white/[0.06]',
+                  'mt-0.5 overflow-hidden rounded-full bg-tint/[0.06]',
                   big ? 'h-2' : 'h-[3px]',
                 )}
               >
@@ -270,7 +270,7 @@ export function ScreenContent({ content, big, contextRef }: Props) {
             {[190, 28, 210, 165].map((hue, i) => (
               <div
                 key={hue}
-                className="relative overflow-hidden rounded-[4px] ring-1 ring-white/10"
+                className="relative overflow-hidden rounded-[4px] ring-1 ring-tint/10"
                 style={{
                   background: `linear-gradient(140deg, hsl(${hue} 30% 26%), hsl(${hue + 30} 35% 12%))`,
                 }}
@@ -359,7 +359,7 @@ export function ScreenContent({ content, big, contextRef }: Props) {
           {['Abuja traffic', 'Lagos transit', 'Kaduna bulletin', 'Weather · Sahel'].map((f, i) => (
             <div
               key={f}
-              className="relative overflow-hidden rounded-[4px] ring-1 ring-white/10"
+              className="relative overflow-hidden rounded-[4px] ring-1 ring-tint/10"
               style={{
                 background: `linear-gradient(160deg, hsl(${200 + i * 12} 25% 18%), hsl(${210 + i * 8} 30% 9%))`,
               }}
@@ -442,7 +442,7 @@ function CasesList({ big }: { big?: boolean }) {
         <div
           key={c.id}
           className={cn(
-            'flex items-center gap-2 border-b border-white/[0.04]',
+            'flex items-center gap-2 border-b border-tint/[0.04]',
             big ? 'py-3' : 'py-[4px]',
           )}
         >
@@ -502,7 +502,7 @@ function RegionScreen({ big }: { big?: boolean }) {
         big ? 'grid-cols-[1.2fr_1fr] gap-6' : 'grid-cols-[1fr_1.15fr] gap-1.5',
       )}
     >
-      <div className="relative overflow-hidden rounded-[4px] grid-texture ring-1 ring-white/[0.06]">
+      <div className="relative overflow-hidden rounded-[4px] grid-texture ring-1 ring-tint/[0.06]">
         <svg viewBox="0 0 100 70" className="h-full w-full" aria-hidden>
           <path
             d="M8 20 L30 12 L52 14 L70 10 L92 22 L88 40 L70 52 L48 60 L26 56 L10 40 Z"
@@ -545,7 +545,7 @@ function VideoScreen({ big }: { big?: boolean }) {
   return (
     <div className="flex h-full flex-col gap-1">
       <div
-        className="relative min-h-0 flex-1 overflow-hidden rounded-[4px] ring-1 ring-white/10"
+        className="relative min-h-0 flex-1 overflow-hidden rounded-[4px] ring-1 ring-tint/10"
         style={{ background: 'linear-gradient(150deg, #24343b, #0c1418 70%)' }}
       >
         <div className="absolute inset-0 scanlines" />
@@ -584,7 +584,7 @@ function VideoScreen({ big }: { big?: boolean }) {
         <span className={cn('num text-ink-muted', big ? 'text-sm' : 'text-[8.5px]')}>
           00:21 / 01:24
         </span>
-        <div className="relative h-[3px] flex-1 rounded-full bg-white/10">
+        <div className="relative h-[3px] flex-1 rounded-full bg-tint/10">
           <div className="absolute inset-y-0 left-0 w-1/4 rounded-full bg-cyan" />
           <div
             className="absolute top-1/2 left-[61%] size-[5px] -translate-y-1/2 rounded-full bg-amber"

@@ -5,14 +5,30 @@ import { useMediaAnalysis, useWorkingCopy } from '@/api/queries'
 import type { EvidenceItem, MediaAnalysis, MediaScreening } from '@/api/types'
 import { Modal } from '@/components/Overlay'
 import { Badge, ErrorNotice, SkeletonRows, type Tone } from '@/components/ui'
-import { dateTime } from '@/lib/format'
+import { chanceText, dateTime } from '@/lib/format'
 
-/** media's verdict vocabulary, in words; an indicator informs, it never decides (Section 7). */
+/** media's verdict vocabulary, in words; an indicator informs, it never decides (Section 7).
+ * The detectors judge whether a model made the image, not whether it was edited or is in context,
+ * so the reassuring verdict says exactly that (ADR 0011). */
 export const VERDICT_LABEL: Record<string, string> = {
   LikelySynthetic: 'Likely AI-generated',
-  LikelyAuthentic: 'Likely authentic',
+  LikelyAuthentic: 'Likely not AI-generated',
   Inconclusive: 'Inconclusive',
 }
+const VERDICT_HINT =
+  'Advisory only. It says whether an AI model is likely to have made the image, not whether it was edited, staged or used out of context.'
+
+/** media's detector names (ADR 0010, 0011), as an analyst would say them. */
+const DETECTOR_LABEL: Record<string, string> = {
+  'synthetic-image-a': 'AI image model',
+  watermark: 'Generator watermark',
+  declared: 'Declared in the file',
+  c2pa: 'Content credentials (C2PA)',
+  stub: 'No model',
+}
+/** Checks that look for a mark: when they find none, that is the answer, not an uncertain one. */
+const PRESENCE_CHECKS = new Set(['watermark', 'declared'])
+
 const verdictTone = (v: string | null): Tone =>
   v === 'LikelySynthetic' ? 'red' : v === 'LikelyAuthentic' ? 'green' : 'neutral'
 
@@ -28,7 +44,7 @@ export function ScreeningBadge({ screening }: { screening: MediaScreening | unde
       </span>
     )
   return (
-    <span title="Combined media indicator: advisory only">
+    <span title={VERDICT_HINT}>
       <Badge tone={verdictTone(screening.verdict)}>
         {VERDICT_LABEL[screening.verdict ?? ''] ?? 'Screened'}
         {screening.c2paPresent ? ' · C2PA' : ''}
@@ -191,10 +207,18 @@ function Analysis({ a }: { a: MediaAnalysis }) {
           <ul className="space-y-1">
             {a.indicators.map((i) => (
               <li key={i.detector} className="flex flex-wrap items-center gap-2">
-                <span className="font-mono text-[11.5px] text-ink-2">{i.detector}</span>
-                <Badge tone={verdictTone(i.verdict)}>{VERDICT_LABEL[i.verdict] ?? i.verdict}</Badge>
+                <span className="text-ink-2" title={i.detector}>
+                  {DETECTOR_LABEL[i.detector] ?? i.detector}
+                </span>
+                {i.confidence === null && PRESENCE_CHECKS.has(i.detector) ? (
+                  <Badge tone="neutral">Nothing found</Badge>
+                ) : (
+                  <Badge tone={verdictTone(i.verdict)}>
+                    {VERDICT_LABEL[i.verdict] ?? i.verdict}
+                  </Badge>
+                )}
                 {i.confidence !== null && (
-                  <span className="text-ink-faint">{Math.round(i.confidence * 100)}%</span>
+                  <span className="text-ink-faint">{chanceText(i.confidence)}</span>
                 )}
                 {i.limitations && (
                   <span className="text-[11.5px] text-ink-faint">{i.limitations}</span>
@@ -202,11 +226,14 @@ function Analysis({ a }: { a: MediaAnalysis }) {
               </li>
             ))}
             {a.combined && (
-              <li className="flex items-center gap-2 pt-1">
+              <li className="flex flex-wrap items-center gap-2 pt-1">
                 <span className="text-ink-2">Combined</span>
                 <Badge tone={verdictTone(a.combined.verdict)}>
                   {VERDICT_LABEL[a.combined.verdict] ?? a.combined.verdict}
                 </Badge>
+                <span className="text-[11.5px] text-ink-faint">
+                  Whether a model made it, not whether it was edited or is in context.
+                </span>
               </li>
             )}
           </ul>

@@ -196,7 +196,7 @@ function EscalationLadder({
                   ? 'bg-red/15 text-red ring-red/40 shadow-[0_0_12px_-2px_var(--color-red)]'
                   : reached
                     ? 'bg-cyan/12 text-cyan ring-cyan/35'
-                    : 'bg-white/[0.03] text-ink-faint ring-white/10',
+                    : 'bg-tint/[0.03] text-ink-faint ring-tint/10',
               )}
             >
               L{level}

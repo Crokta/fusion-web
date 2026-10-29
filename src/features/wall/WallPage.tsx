@@ -416,7 +416,7 @@ export function WallPage() {
                 <button
                   type="button"
                   onClick={() => setSelection([])}
-                  className="grid size-7 place-items-center rounded-md text-ink-muted hover:bg-white/5 hover:text-ink"
+                  className="grid size-7 place-items-center rounded-md text-ink-muted hover:bg-tint/5 hover:text-ink"
                   aria-label="Clear selection"
                 >
                   <X size={14} />

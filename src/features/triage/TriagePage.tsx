@@ -112,7 +112,7 @@ export function TriagePage() {
                       onClick={() => setSelectedId(t.id)}
                       className={cn(
                         'relative flex w-full items-center gap-4 px-4 py-3.5 text-left transition-colors focus-visible:-outline-offset-2',
-                        active ? 'bg-cyan/[0.06]' : 'hover:bg-white/[0.025]',
+                        active ? 'bg-cyan/[0.06]' : 'hover:bg-tint/[0.025]',
                       )}
                     >
                       {active && (
@@ -246,7 +246,7 @@ function PromotePanel({ item }: { item: TriageItem }) {
       {!allowed && (
         <div
           role="note"
-          className="mb-4 flex gap-3 rounded-lg border border-line-strong bg-white/[0.025] px-3.5 py-3"
+          className="mb-4 flex gap-3 rounded-lg border border-line-strong bg-tint/[0.025] px-3.5 py-3"
         >
           <ShieldAlert size={16} className="mt-0.5 shrink-0 text-cyan" aria-hidden />
           <p className="text-[12.5px] leading-relaxed text-ink-muted">

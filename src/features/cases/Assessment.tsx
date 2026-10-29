@@ -74,7 +74,7 @@ export function useAssessmentAccess(c: CaseDetail) {
 /** One line above the assessment saying what editing will do, or why it is off. */
 export function AssessmentNotice({ c }: { c: CaseDetail }) {
   const { roleMay, activeRole } = useAssessmentAccess(c)
-  let tone = 'border-line-strong bg-white/[0.025]'
+  let tone = 'border-line-strong bg-tint/[0.025]'
   let icon = <ShieldAlert size={15} className="mt-0.5 shrink-0 text-cyan" aria-hidden />
   let text: ReactNode = null
   if (!roleMay) {
@@ -162,7 +162,7 @@ function Chip({ children, title }: { children: ReactNode; title?: string }) {
   return (
     <span
       title={title}
-      className="max-w-[260px] truncate rounded-[4px] bg-white/[0.035] px-1.5 py-0.5 font-mono text-[10.5px] text-ink-muted ring-1 ring-white/[0.06]"
+      className="max-w-[260px] truncate rounded-[4px] bg-tint/[0.035] px-1.5 py-0.5 font-mono text-[10.5px] text-ink-muted ring-1 ring-tint/[0.06]"
     >
       {children}
     </span>
@@ -241,7 +241,7 @@ function PickChip({
         'inline-flex max-w-full items-center gap-1 truncate rounded-full px-2.5 py-1 text-[11.5px] ring-1 transition-colors',
         on
           ? 'bg-cyan/[0.12] text-ink ring-cyan/50'
-          : 'bg-white/[0.03] text-ink-muted ring-white/10 hover:text-ink',
+          : 'bg-tint/[0.03] text-ink-muted ring-tint/10 hover:text-ink',
       )}
     >
       {on && <Check size={11} className="shrink-0 text-cyan" aria-hidden />}
@@ -474,7 +474,7 @@ export function FindingsPanel({ c }: { c: CaseDetail }) {
         <ol className="divide-y divide-line-soft">
           {c.findings.map((f, i) => (
             <li key={f.id} className="flex gap-4 px-4 py-4">
-              <span className="num mt-0.5 grid size-6 shrink-0 place-items-center rounded-md bg-white/[0.04] font-mono text-[11px] text-ink-muted ring-1 ring-white/[0.06]">
+              <span className="num mt-0.5 grid size-6 shrink-0 place-items-center rounded-md bg-tint/[0.04] font-mono text-[11px] text-ink-muted ring-1 ring-tint/[0.06]">
                 F{i + 1}
               </span>
               <div className="min-w-0 flex-1">
@@ -713,7 +713,7 @@ export function StatementsPanel({ c }: { c: CaseDetail }) {
             const e = s.evidenceId ? c.evidence.find((x) => x.id === s.evidenceId) : undefined
             return (
               <li key={s.id} className="flex gap-4 px-4 py-3.5">
-                <span className="num mt-0.5 grid size-6 shrink-0 place-items-center rounded-md bg-white/[0.04] font-mono text-[11px] text-ink-muted ring-1 ring-white/[0.06]">
+                <span className="num mt-0.5 grid size-6 shrink-0 place-items-center rounded-md bg-tint/[0.04] font-mono text-[11px] text-ink-muted ring-1 ring-tint/[0.06]">
                   S{i + 1}
                 </span>
                 <div className="min-w-0 flex-1">

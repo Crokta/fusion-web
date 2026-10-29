@@ -106,7 +106,7 @@ export function SendContentModal({
                         'flex items-start gap-2.5 rounded-md border px-2.5 py-2 text-left transition-colors',
                         on
                           ? 'border-cyan/60 bg-cyan/[0.08]'
-                          : 'border-line hover:border-line-strong hover:bg-white/[0.02]',
+                          : 'border-line hover:border-line-strong hover:bg-tint/[0.02]',
                       )}
                     >
                       <c.icon

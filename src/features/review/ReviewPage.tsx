@@ -83,7 +83,7 @@ export function ReviewPage() {
                       }}
                       className={cn(
                         'relative flex w-full items-center gap-4 px-4 py-3.5 text-left transition-colors focus-visible:-outline-offset-2',
-                        active ? 'bg-cyan/[0.06]' : 'hover:bg-white/[0.025]',
+                        active ? 'bg-cyan/[0.06]' : 'hover:bg-tint/[0.025]',
                       )}
                     >
                       {active && (

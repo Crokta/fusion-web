@@ -56,6 +56,8 @@ export function MiniWall({
 
   return (
     <div
+      // A preview of the wall, so it keeps the wall's dark palette (index.css).
+      data-theme="dark"
       className={cn(
         'grid aspect-video gap-[2px] rounded-[4px] bg-black/60 p-[2px] ring-1 ring-white/[0.06]',
         className,
@@ -83,7 +85,7 @@ export function MiniWall({
                 ? 'bg-cyan/35 ring-1 ring-cyan'
                 : c.indexes.length > 1
                   ? 'bg-teal/[0.18] ring-1 ring-teal/40'
-                  : 'bg-white/[0.07]',
+                  : 'bg-tint/[0.07]',
               onCellClick && 'hover:bg-cyan/20',
             )}
             style={{

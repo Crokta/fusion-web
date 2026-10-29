@@ -110,7 +110,7 @@ export function ContextRail() {
                     ['Findings', kase.data.findings.length],
                     ['Indicators', kase.data.indicators.length],
                   ].map(([k, v]) => (
-                    <div key={k} className="rounded-md bg-white/[0.025] px-2.5 py-1.5">
+                    <div key={k} className="rounded-md bg-tint/[0.025] px-2.5 py-1.5">
                       <dd className="num text-[15px] font-semibold text-ink">{v}</dd>
                       <dt className="text-[10.5px] text-ink-faint">{k}</dt>
                     </div>

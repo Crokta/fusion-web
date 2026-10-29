@@ -52,7 +52,7 @@ export function ReviewDecisionPanel({
       {!isAuthor && !roleAllowed && (
         <div
           role="note"
-          className="mb-4 flex gap-3 rounded-lg border border-line-strong bg-white/[0.025] px-3.5 py-3"
+          className="mb-4 flex gap-3 rounded-lg border border-line-strong bg-tint/[0.025] px-3.5 py-3"
         >
           <ShieldAlert size={16} className="mt-0.5 shrink-0 text-cyan" aria-hidden />
           <p className="text-[12.5px] leading-relaxed text-ink-muted">

@@ -42,7 +42,7 @@ function Toggle({
       onClick={onClick}
       className={cn(
         'relative h-5 w-9 shrink-0 rounded-full transition-colors disabled:opacity-45',
-        on ? 'bg-cyan/80 shadow-[0_0_12px_-2px_rgb(69_215_242/.7)]' : 'bg-white/[0.1]',
+        on ? 'bg-cyan/80 shadow-[0_0_12px_-2px_rgb(69_215_242/.7)]' : 'bg-tint/[0.1]',
       )}
     >
       <span
@@ -211,7 +211,7 @@ export function AdminPage() {
                 </thead>
                 <tbody className="divide-y divide-line-soft">
                   {audit.data.items.map((e) => (
-                    <tr key={e.id} className="hover:bg-white/[0.02]">
+                    <tr key={e.id} className="hover:bg-tint/[0.02]">
                       <td className="num py-2.5 pr-2 pl-4 whitespace-nowrap text-ink-muted">
                         {dateTime(e.at)}
                       </td>

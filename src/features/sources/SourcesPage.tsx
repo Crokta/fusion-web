@@ -189,7 +189,7 @@ export function SourcesPage() {
                         onClick={() => setSelectedId(s.id)}
                         className={cn(
                           'relative flex w-full items-center gap-4 px-4 py-3.5 text-left transition-colors focus-visible:-outline-offset-2',
-                          active ? 'bg-cyan/[0.06]' : 'hover:bg-white/[0.025]',
+                          active ? 'bg-cyan/[0.06]' : 'hover:bg-tint/[0.025]',
                         )}
                       >
                         {active && (
@@ -243,7 +243,7 @@ export function SourcesPage() {
 function Grade({ grade }: { grade: Reliability | null }) {
   return (
     <span
-      className="grid size-8 shrink-0 place-items-center rounded-md bg-white/[0.04] font-mono text-[13px] font-semibold text-ink-2 ring-1 ring-white/[0.08]"
+      className="grid size-8 shrink-0 place-items-center rounded-md bg-tint/[0.04] font-mono text-[13px] font-semibold text-ink-2 ring-1 ring-tint/[0.08]"
       title={grade ? GRADES.find((g) => g.value === grade)?.label : 'Not graded'}
       aria-label={grade ? `Reliability ${grade}` : 'Not graded'}
     >
@@ -538,7 +538,7 @@ function ImportModal({ onClose }: { onClose: () => void }) {
             <input
               type="file"
               accept="application/json,.json"
-              className="block w-full text-[12.5px] text-ink-2 file:mr-3 file:rounded-md file:border-0 file:bg-white/[0.06] file:px-3 file:py-1.5 file:text-ink"
+              className="block w-full text-[12.5px] text-ink-2 file:mr-3 file:rounded-md file:border-0 file:bg-tint/[0.06] file:px-3 file:py-1.5 file:text-ink"
               onChange={async (e) => {
                 const f = e.target.files?.[0]
                 if (!f) return
@@ -722,7 +722,7 @@ function DutyNote({
     return (
       <div
         role="note"
-        className="mb-4 flex gap-3 rounded-lg border border-line-strong bg-white/[0.025] px-3.5 py-3"
+        className="mb-4 flex gap-3 rounded-lg border border-line-strong bg-tint/[0.025] px-3.5 py-3"
       >
         <ShieldAlert size={16} className="mt-0.5 shrink-0 text-cyan" aria-hidden />
         <p className="text-[12.5px] leading-relaxed text-ink-muted">

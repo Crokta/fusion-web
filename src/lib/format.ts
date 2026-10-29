@@ -43,3 +43,10 @@ export function countdown(
 
 export const compact = (n: number) =>
   new Intl.NumberFormat('en-GB', { notation: 'compact', maximumFractionDigits: 1 }).format(n)
+
+/** A detector's probability as an analyst should read it: a model's score is never "0%" or "100%". */
+export function chanceText(confidence: number): string {
+  const pct = confidence * 100
+  const value = pct < 1 ? 'under 1%' : pct > 99 ? 'over 99%' : `${Math.round(pct)}%`
+  return `${value} chance AI-generated`
+}

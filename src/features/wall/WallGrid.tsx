@@ -122,6 +122,8 @@ export function WallGrid({
 
   return (
     <div
+      // A preview of the wall, so it keeps the wall's dark palette (index.css).
+      data-theme="dark"
       ref={gridRef}
       role="grid"
       aria-label={`Wall preview, ${state.rows} by ${state.cols} screens`}
@@ -240,7 +242,7 @@ const WallTile = memo(function WallTile(p: TileProps) {
           ? 'z-10 shadow-glow-cyan ring-2 ring-cyan'
           : p.group
             ? 'ring-teal/40'
-            : 'ring-white/[0.07]',
+            : 'ring-tint/[0.07]',
         !p.presentation && !p.selected && 'cursor-pointer hover:ring-cyan/40',
         p.dragging && 'scale-[0.97] opacity-40',
         p.dropTarget &&

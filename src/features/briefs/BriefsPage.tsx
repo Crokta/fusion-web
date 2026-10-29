@@ -45,7 +45,7 @@ export function BriefsPage() {
                   <Link
                     to="/products/$productId"
                     params={{ productId: b.id }}
-                    className="flex items-center gap-4 px-4 py-3.5 transition-colors hover:bg-white/[0.025]"
+                    className="flex items-center gap-4 px-4 py-3.5 transition-colors hover:bg-tint/[0.025]"
                   >
                     <div className="min-w-0 flex-1">
                       <p className="truncate text-[13px] font-medium text-ink">{b.title}</p>

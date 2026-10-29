@@ -135,7 +135,7 @@ export function ItemDrawer() {
                             <button
                               type="button"
                               onClick={() => openItem(r.id)}
-                              className="flex w-full items-center gap-3 rounded-md px-2.5 py-2 text-left hover:bg-white/[0.035]"
+                              className="flex w-full items-center gap-3 rounded-md px-2.5 py-2 text-left hover:bg-tint/[0.035]"
                             >
                               <M.icon size={14} className={M.tone} />
                               <span className="min-w-0 flex-1">
@@ -171,7 +171,7 @@ export function ItemDrawer() {
                       }}
                     >
                       <div className="absolute inset-0 scanlines opacity-70" />
-                      <div className="absolute inset-[18%] rounded border border-white/15" />
+                      <div className="absolute inset-[18%] rounded border border-tint/15" />
                       {i === 2 && (
                         <span className="absolute top-2 right-2 rounded bg-amber px-1.5 py-0.5 text-[10px] font-bold text-void">
                           ARCHIVE 0.91

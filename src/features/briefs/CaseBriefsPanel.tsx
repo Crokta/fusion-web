@@ -32,7 +32,7 @@ export function CaseBriefsPanel({ c }: { c: CaseDetail }) {
               <Link
                 to="/products/$productId"
                 params={{ productId: b.id }}
-                className="flex items-center gap-3 px-4 py-3 transition-colors hover:bg-white/[0.025]"
+                className="flex items-center gap-3 px-4 py-3 transition-colors hover:bg-tint/[0.025]"
               >
                 <span className="min-w-0 flex-1 truncate text-[12.5px] text-ink">{b.title}</span>
                 <Badge tone={b.status === 'released' ? 'green' : 'amber'} dot>

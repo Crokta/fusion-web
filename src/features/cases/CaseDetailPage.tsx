@@ -53,7 +53,7 @@ const timelineIcon: Record<TimelineEntry['kind'], { icon: LucideIcon; cls: strin
   evidence: { icon: FileSearch, cls: 'text-teal bg-teal/10 ring-teal/30' },
   finding: { icon: Flag, cls: 'text-green bg-green/10 ring-green/30' },
   indicator: { icon: Brain, cls: 'text-violet bg-violet/10 ring-violet/30' },
-  note: { icon: MessageSquareText, cls: 'text-ink-2 bg-white/[0.05] ring-white/10' },
+  note: { icon: MessageSquareText, cls: 'text-ink-2 bg-tint/[0.05] ring-tint/10' },
   assignment: { icon: UserPlus, cls: 'text-amber bg-amber/10 ring-amber/30' },
   review: { icon: Stamp, cls: 'text-amber bg-amber/10 ring-amber/30' },
 }
@@ -182,7 +182,7 @@ function CaseView({ c }: { c: CaseDetail }) {
                         {ind.confidence.toFixed(2)}
                       </span>
                     </div>
-                    <p className="mt-2 rounded-md bg-white/[0.025] px-2.5 py-1.5 text-[11px] leading-relaxed text-ink-muted">
+                    <p className="mt-2 rounded-md bg-tint/[0.025] px-2.5 py-1.5 text-[11px] leading-relaxed text-ink-muted">
                       <span className="font-semibold text-ink-faint">Limitations · </span>
                       {ind.limitations}
                     </p>
@@ -307,7 +307,7 @@ function ChecklistPanel({ c }: { c: CaseDetail }) {
         </span>
       }
     >
-      <div className="mb-3 h-1.5 overflow-hidden rounded-full bg-white/[0.06]">
+      <div className="mb-3 h-1.5 overflow-hidden rounded-full bg-tint/[0.06]">
         <div
           className={cn(
             'h-full rounded-full transition-[width] duration-700',
@@ -337,7 +337,7 @@ function ChecklistPanel({ c }: { c: CaseDetail }) {
                 }
                 className={cn(
                   '-mx-1.5 flex w-[calc(100%+0.75rem)] items-start gap-2.5 rounded-md px-1.5 py-1 text-left text-[12.5px] transition-colors',
-                  canTick ? 'hover:bg-white/[0.03]' : 'cursor-default',
+                  canTick ? 'hover:bg-tint/[0.03]' : 'cursor-default',
                 )}
               >
                 <span

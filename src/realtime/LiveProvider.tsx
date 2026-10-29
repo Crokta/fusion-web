@@ -9,6 +9,7 @@ import {
   type LiveClient,
   type LiveStatus,
 } from './client'
+import { createCoalescedInvalidator } from './coalesce'
 
 interface LiveContextValue {
   client: LiveClient
@@ -31,6 +32,7 @@ export function LiveProvider({ children }: { children: ReactNode }) {
   const [jobs, setJobs] = useState<JobProgress[]>([])
 
   useEffect(() => {
+    const refetch = createCoalescedInvalidator(qc)
     const offs = [
       client.onStatus(setStatus),
       client.on('story.published', (story: StoryGroup) => {
@@ -39,7 +41,7 @@ export function LiveProvider({ children }: { children: ReactNode }) {
             ? { ...old, items: [story, ...old.items] }
             : old,
         )
-        qc.invalidateQueries({ queryKey: qk.watchFloor })
+        refetch.invalidate(qk.watchFloor)
       }),
       client.on('alert.raised', (alert: Alert) => {
         qc.setQueriesData<Page<Alert>>({ queryKey: ['alerts'] }, (old) =>
@@ -50,7 +52,7 @@ export function LiveProvider({ children }: { children: ReactNode }) {
       }),
       client.on('wall.state', (state) => {
         qc.setQueryData(qk.wall, state)
-        qc.invalidateQueries({ queryKey: qk.wallPublications })
+        refetch.invalidate(qk.wallPublications)
       }),
       client.on('job.progress', (job) =>
         setJobs((prev) => [job, ...prev.filter((j) => j.jobId !== job.jobId)].slice(0, 6)),
@@ -62,28 +64,28 @@ export function LiveProvider({ children }: { children: ReactNode }) {
         client.onAny((event) => {
           switch (event) {
             case 'story.published':
-              qc.invalidateQueries({ queryKey: ['feed'] })
-              qc.invalidateQueries({ queryKey: qk.watchFloor })
+              refetch.invalidate(['feed'])
+              refetch.invalidate(qk.watchFloor)
               break
             case 'alert.raised':
-              qc.invalidateQueries({ queryKey: ['alerts'] })
-              qc.invalidateQueries({ queryKey: ['alert'] })
-              qc.invalidateQueries({ queryKey: qk.watchFloor })
+              refetch.invalidate(['alerts'])
+              refetch.invalidate(['alert'])
+              refetch.invalidate(qk.watchFloor)
               break
             case 'notification.delivered':
-              qc.invalidateQueries({ queryKey: qk.notifications })
-              qc.invalidateQueries({ queryKey: ['alert'] })
+              refetch.invalidate(qk.notifications)
+              refetch.invalidate(['alert'])
               break
             case 'wall.state':
-              qc.invalidateQueries({ queryKey: qk.wall })
-              qc.invalidateQueries({ queryKey: qk.wallPublications })
+              refetch.invalidate(qk.wall)
+              refetch.invalidate(qk.wallPublications)
               break
             case 'case.changed':
-              qc.invalidateQueries({ queryKey: ['cases'] })
-              qc.invalidateQueries({ queryKey: ['reviews'] })
+              refetch.invalidate(['cases'])
+              refetch.invalidate(['reviews'])
               break
             case 'approval.changed':
-              qc.invalidateQueries({ queryKey: ['approvals'] })
+              refetch.invalidate(['approvals'])
               break
           }
         }),
@@ -92,6 +94,7 @@ export function LiveProvider({ children }: { children: ReactNode }) {
     void client.start()
     return () => {
       offs.forEach((off) => off())
+      refetch.dispose()
       void client.stop()
     }
   }, [client, qc])

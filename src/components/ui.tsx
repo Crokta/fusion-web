@@ -14,7 +14,7 @@ const variants: Record<Variant, string> = {
     'bg-cyan/90 text-void font-semibold hover:bg-cyan shadow-[0_0_0_1px_rgb(69_215_242/.5),0_6px_20px_-6px_rgb(69_215_242/.55)] disabled:bg-cyan/30 disabled:shadow-none',
   secondary:
     'bg-raised/70 text-ink-2 border border-line-strong/80 hover:border-cyan/50 hover:text-ink hover:bg-hover',
-  ghost: 'text-ink-muted hover:text-ink hover:bg-white/[0.04]',
+  ghost: 'text-ink-muted hover:text-ink hover:bg-tint/[0.04]',
   danger: 'bg-red/10 text-red border border-red/35 hover:bg-red/18 hover:border-red/60',
   success: 'bg-green/12 text-green border border-green/35 hover:bg-green/20 hover:border-green/60',
 }
@@ -89,7 +89,7 @@ export function IconButton({
       aria-label={label}
       title={label}
       className={cn(
-        'inline-grid size-8 shrink-0 place-items-center rounded-md text-ink-muted transition-colors hover:bg-white/[0.05] hover:text-ink disabled:opacity-40',
+        'inline-grid size-8 shrink-0 place-items-center rounded-md text-ink-muted transition-colors hover:bg-tint/[0.05] hover:text-ink disabled:opacity-40',
         active && 'bg-cyan/10 text-cyan',
         className,
       )}
@@ -108,7 +108,7 @@ const tones = {
   amber: 'text-amber bg-amber/10 ring-amber/25',
   red: 'text-red bg-red/10 ring-red/30',
   violet: 'text-violet bg-violet/10 ring-violet/25',
-  neutral: 'text-ink-2 bg-white/[0.04] ring-white/10',
+  neutral: 'text-ink-2 bg-tint/[0.04] ring-tint/10',
 } as const
 export type Tone = keyof typeof tones
 
@@ -221,7 +221,7 @@ export function Kbd({ children, className }: { children: ReactNode; className?: 
   return (
     <kbd
       className={cn(
-        'inline-flex h-[18px] min-w-[18px] items-center justify-center rounded-[4px] border border-line-strong bg-white/[0.03] px-1 font-sans text-[10px] font-medium text-ink-muted shadow-[0_1px_0_0_rgb(255_255_255/.04)]',
+        'inline-flex h-[18px] min-w-[18px] items-center justify-center rounded-[4px] border border-line-strong bg-tint/[0.03] px-1 font-sans text-[10px] font-medium text-ink-muted shadow-[0_1px_0_0_rgb(255_255_255/.04)]',
         className,
       )}
     >
@@ -435,7 +435,7 @@ export function Meter({
   }[tone]
   return (
     <div
-      className={cn('h-1.5 w-full overflow-hidden rounded-full bg-white/[0.06]', className)}
+      className={cn('h-1.5 w-full overflow-hidden rounded-full bg-tint/[0.06]', className)}
       role="meter"
       aria-valuenow={Math.round(value * 100)}
       aria-valuemin={0}
@@ -490,7 +490,7 @@ export function CaseLink({ caseRef, className }: { caseRef: string; className?: 
       to="/cases/$caseId"
       params={{ caseId: caseRef.toLowerCase() }}
       className={cn(
-        'font-mono text-[11px] font-medium text-cyan hover:text-white hover:underline underline-offset-2',
+        'font-mono text-[11px] font-medium text-cyan hover:text-ink hover:underline underline-offset-2',
         className,
       )}
       onClick={(e) => e.stopPropagation()}

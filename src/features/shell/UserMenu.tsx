@@ -47,7 +47,7 @@ export function UserMenu() {
         onClick={() => setOpen((v) => !v)}
         aria-haspopup="menu"
         aria-expanded={open}
-        className="flex h-9 items-center gap-2.5 rounded-lg py-1 pr-2 pl-1 transition-colors hover:bg-white/[0.04]"
+        className="flex h-9 items-center gap-2.5 rounded-lg py-1 pr-2 pl-1 transition-colors hover:bg-tint/[0.04]"
       >
         <Avatar name={user.name} size={28} />
         <span className="hidden text-left leading-none md:block">
@@ -95,7 +95,7 @@ export function UserMenu() {
                 void setActiveRole(r)
               }}
               className={cn(
-                'flex w-full items-start gap-2.5 rounded-md px-2.5 py-1.5 text-left transition-colors hover:bg-white/[0.04] disabled:opacity-50',
+                'flex w-full items-start gap-2.5 rounded-md px-2.5 py-1.5 text-left transition-colors hover:bg-tint/[0.04] disabled:opacity-50',
                 r === activeRole && 'bg-cyan/[0.07]',
               )}
             >
@@ -118,7 +118,7 @@ export function UserMenu() {
               type="button"
               role="menuitem"
               onClick={signOut}
-              className="mt-1 flex w-full items-center gap-2.5 rounded-md border-t border-line px-2.5 py-2 text-[12.5px] text-ink-muted hover:bg-white/[0.04] hover:text-ink"
+              className="mt-1 flex w-full items-center gap-2.5 rounded-md border-t border-line px-2.5 py-2 text-[12.5px] text-ink-muted hover:bg-tint/[0.04] hover:text-ink"
             >
               <LogOut size={14} /> Sign out
             </button>
