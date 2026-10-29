@@ -10,29 +10,39 @@ import {
   type ReactNode,
 } from 'react'
 import { configureSession } from '@/api/session'
-import type { Role } from '@/api/types'
+import { ROLE_LABEL, type Role } from '@/api/types'
+import { useToast } from '@/components/Toaster'
+import {
+  ALL_ROLES,
+  BASE_SCOPE,
+  SILENT_MARKER,
+  checkSwitch,
+  isRole,
+  isSilentCallback,
+  needsRenewal,
+  scopeFor,
+  switchGranted,
+  tokenRoles,
+} from './activeRole'
 
 /**
  * Authentication and the active role.
  *
  * Fusion users hold several roles but act in one at a time (Section 4.1: the gateway attaches
- * user, active role and device to every request). The role switcher changes that selection;
- * every cached query is refetched afterwards because the server filters by role.
+ * user, active role and device to every request). The role is the access token's active_role,
+ * which every service checks, so switching role means getting a new token (ADR 0008): a silent
+ * prompt=none re-authorisation asking Keycloak for the scope `role:<role>`, which Keycloak
+ * grants only to a holder of that role. Renewal refreshes with the same scope, so the role
+ * outlives the 5-minute token. Every cached query is refetched afterwards, and the screens
+ * below AuthGate remount so the live hub reconnects with the new role's groups.
  *
- * VITE_AUTH_DISABLED=true signs in a local dev user so the UI runs with no Keycloak.
+ * VITE_AUTH_DISABLED=true signs in a local dev user so the UI runs with no Keycloak; there the
+ * switch is local only, as nothing checks a token.
  */
 
 export const AUTH_DISABLED = import.meta.env.VITE_AUTH_DISABLED === 'true'
+/** The last role chosen: asked for at the next sign-in, granted only if still held. */
 const ROLE_KEY = 'fusion.activeRole'
-const ALL_ROLES: Role[] = [
-  'analyst',
-  'supervisor',
-  'reviewer',
-  'centre_lead',
-  'evidence_officer',
-  'leadership',
-  'admin',
-]
 
 export interface AuthUser {
   id: string
@@ -43,11 +53,16 @@ export interface AuthUser {
   tokenRole?: Role
 }
 
+export type SwitchResult = 'switched' | 'refused' | 'failed' | 'unchanged'
+
 interface AuthContextValue {
   status: 'loading' | 'authenticated' | 'error'
   user: AuthUser | null
   activeRole: Role
-  setActiveRole: (role: Role) => void
+  /** Asks for a token in `role`; resolves once the screens show the outcome. */
+  setActiveRole: (role: Role) => Promise<SwitchResult>
+  /** The role being switched to, while the new token is on its way. */
+  switching: Role | null
   signOut: () => void
   error?: string
   devMode: boolean
@@ -68,42 +83,102 @@ function userManager() {
     authority: import.meta.env.VITE_OIDC_AUTHORITY ?? 'http://localhost:8080/realms/fusion',
     client_id: import.meta.env.VITE_OIDC_CLIENT_ID ?? 'fusion-web',
     redirect_uri: `${window.location.origin}/`,
+    // The hidden frame of a silent re-authorisation lands here; see the check below.
+    silent_redirect_uri: `${window.location.origin}/?${SILENT_MARKER}`,
     post_logout_redirect_uri: `${window.location.origin}/`,
     response_type: 'code', // authorisation code + PKCE (oidc-client-ts always uses S256)
-    scope: 'openid profile email',
-    automaticSilentRenew: true,
+    scope: BASE_SCOPE,
+    // Renewal is driven here (renew() below), not by the library: its own renewal falls back to
+    // the configured scope, which carries no role, and its timer alone misses a token that
+    // expired while the tab slept.
+    automaticSilentRenew: false,
     userStore: new WebStorageStateStore({ store: window.sessionStorage }),
   })
   return manager
 }
 
-function readStoredRole(roles: Role[]): Role {
+/**
+ * Inside the hidden frame: hand the authorisation response to the window that opened it and do
+ * nothing else. AuthGate keeps the frame on its holding screen, so no screen renders or fetches.
+ */
+const IN_SILENT_FRAME =
+  !AUTH_DISABLED && isSilentCallback(window.location.href, window.self !== window.top)
+if (IN_SILENT_FRAME) void userManager().signinSilentCallback()
+
+function readStoredRole(): Role | null {
   try {
-    const stored = localStorage.getItem(ROLE_KEY) as Role | null
-    if (stored && roles.includes(stored)) return stored
+    const stored = localStorage.getItem(ROLE_KEY)
+    return isRole(stored) ? stored : null
   } catch {
-    /* storage unavailable: fall through */
+    return null // storage unavailable
   }
-  return roles.includes('centre_lead') ? 'centre_lead' : (roles[0] ?? 'analyst')
+}
+
+function storeRole(role: Role) {
+  try {
+    localStorage.setItem(ROLE_KEY, role)
+  } catch {
+    /* storage unavailable: the next sign-in uses the default role */
+  }
 }
 
 function toAuthUser(u: User): AuthUser {
   const p = u.profile as Record<string, unknown>
-  // The realm puts realm roles in a `roles` claim (fusion-realm.json); realm_access is the fallback.
-  const claimed =
-    (p.roles as string[] | undefined) ??
-    (p.realm_access as { roles?: string[] } | undefined)?.roles ??
-    []
-  const realmRoles = claimed.filter((r): r is Role => (ALL_ROLES as string[]).includes(r))
+  // Roles and active role come from the access token, the one the services check.
+  const { roles, activeRole } = tokenRoles(u.access_token)
   return {
     id: String(p.sub),
     name: String(p.name ?? p.preferred_username ?? 'Unknown user'),
     email: String(p.email ?? ''),
-    roles: realmRoles.length ? realmRoles : ['analyst'],
-    tokenRole: (ALL_ROLES as string[]).includes(String(p.active_role))
-      ? (p.active_role as Role)
-      : undefined,
+    roles,
+    tokenRole: activeRole,
   }
+}
+
+/** The role scope this token was granted with, so a renewal asks for the same one. */
+function roleOf(u: User | null): Role | null {
+  return u ? (tokenRoles(u.access_token).activeRole ?? null) : null
+}
+
+/** Sends the browser to Keycloak, to come back to this page in `role` (or the default role). */
+function redirectToSignIn(role: Role | null) {
+  // Back to this same path: the router read it at start-up, so only the query (the code)
+  // needs taking off afterwards.
+  return userManager().signinRedirect({
+    scope: scopeFor(role),
+    redirect_uri: `${window.location.origin}${window.location.pathname}`,
+  })
+}
+
+/**
+ * Renews the token, once however many callers ask at the same moment. With a refresh token
+ * this is a refresh grant, which keeps the token's scope and so its role (Keycloak never widens
+ * a scope on refresh). Without one, a silent re-authorisation in the same role.
+ */
+let renewing: Promise<User | null> | undefined
+function renew(): Promise<User | null> {
+  renewing ??= (async () => {
+    const um = userManager()
+    const current = await um.getUser()
+    try {
+      return await um.signinSilent({ scope: scopeFor(roleOf(current)) })
+    } catch {
+      // The Keycloak session has ended (idle or maximum lifetime): sign in again, same role.
+      await redirectToSignIn(roleOf(current) ?? readStoredRole())
+      return null
+    }
+  })().finally(() => {
+    renewing = undefined
+  })
+  return renewing
+}
+
+/** The access token to send, renewed first if it has expired or is about to. */
+async function freshToken(): Promise<string | null> {
+  const u = await userManager().getUser()
+  if (!u) return null
+  if (!needsRenewal(u.expires_at, Date.now() / 1000)) return u.access_token
+  return (await renew())?.access_token ?? null
 }
 
 /**
@@ -120,40 +195,49 @@ function bootstrapUser(um: ReturnType<typeof userManager>): Promise<User | null>
       window.history.replaceState({}, '', window.location.pathname)
       return u
     }
-    return um.getUser()
+    const u = await um.getUser()
+    // An expired token with a live refresh token (a reload after a coffee break) renews quietly.
+    if (u?.expired && u.refresh_token) return renew()
+    return u
   })()
   return bootstrap
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const qc = useQueryClient()
+  const toast = useToast()
   const [user, setUser] = useState<AuthUser | null>(AUTH_DISABLED ? DEV_USER : null)
-  const [oidcUser, setOidcUser] = useState<User | null>(null)
   const [status, setStatus] = useState<AuthContextValue['status']>(
     AUTH_DISABLED ? 'authenticated' : 'loading',
   )
   const [error, setError] = useState<string>()
-  const [activeRole, setRole] = useState<Role>(() => readStoredRole(user?.roles ?? ALL_ROLES))
+  const [devRole, setDevRole] = useState<Role>(() => readStoredRole() ?? 'centre_lead')
+  const [switching, setSwitching] = useState<Role | null>(null)
 
   useEffect(() => {
-    if (AUTH_DISABLED) return
+    if (AUTH_DISABLED || IN_SILENT_FRAME) return
     const um = userManager()
     let cancelled = false
     ;(async () => {
       try {
-        const u = await bootstrapUser(um)
+        let u = await bootstrapUser(um)
         if (cancelled) return
         if (!u || u.expired) {
-          await um.signinRedirect({ state: window.location.pathname })
+          await redirectToSignIn(readStoredRole())
           return
         }
-        if (cancelled) return
-        const au = toAuthUser(u)
-        setOidcUser(u)
-        setUser(au)
-        // Against Keycloak the token decides: every service checks its active_role, so the
-        // screens must show and gate on that same role, not a stored preference.
-        setRole(au.tokenRole ?? readStoredRole(au.roles))
+        // A remembered role the user no longer holds is not granted, and the token comes back
+        // with no active_role at all: settle on the default role instead.
+        if (!roleOf(u)) {
+          try {
+            u = await um.signinSilent({ forceIframeAuth: true, scope: scopeFor(null) })
+          } catch {
+            await redirectToSignIn(null)
+            return
+          }
+        }
+        if (cancelled || !u) return
+        setUser(toAuthUser(u))
         setStatus('authenticated')
       } catch (e) {
         if (cancelled) return
@@ -161,35 +245,95 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setStatus('error')
       }
     })()
-    const onLoaded = (u: User) => setOidcUser(u)
+    // Every new token (renewal or switch) updates the screens, so they always show its role.
+    const onLoaded = (u: User) => setUser(toAuthUser(u))
+    const onExpiring = () => void renew()
     um.events.addUserLoaded(onLoaded)
+    um.events.addAccessTokenExpiring(onExpiring)
     return () => {
       cancelled = true
       um.events.removeUserLoaded(onLoaded)
+      um.events.removeAccessTokenExpiring(onExpiring)
     }
   }, [])
+
+  const activeRole: Role = AUTH_DISABLED ? devRole : (user?.tokenRole ?? 'analyst')
 
   // Keep the API bridge pointed at the current token and role. This runs during render, not in
   // an effect, because child queries fire their first request before a parent effect would.
   configureSession({
-    getToken: async () => (AUTH_DISABLED ? null : (oidcUser?.access_token ?? null)),
+    getToken: AUTH_DISABLED ? async () => null : freshToken,
     getActiveRole: () => activeRole,
     getUserId: () => user?.id ?? 'anonymous',
   })
 
   const setActiveRole = useCallback(
-    (role: Role) => {
-      try {
-        localStorage.setItem(ROLE_KEY, role)
-      } catch {
-        /* ignore */
+    async (role: Role): Promise<SwitchResult> => {
+      if (AUTH_DISABLED) {
+        storeRole(role)
+        configureSession({ getActiveRole: () => role })
+        setDevRole(role)
+        void qc.invalidateQueries()
+        toast({
+          title: `Acting as ${ROLE_LABEL[role]}`,
+          detail: 'Screens refreshed.',
+          tone: 'success',
+        })
+        return 'switched'
       }
-      // Update the bridge synchronously so the refetch below already carries the new role.
-      configureSession({ getActiveRole: () => role })
-      setRole(role)
-      void qc.invalidateQueries()
+      const um = userManager()
+      const before = await um.getUser()
+      const check = checkSwitch(role, tokenRoles(before?.access_token))
+      if (!check.ok) {
+        if (check.reason === 'already_active') return 'unchanged'
+        toast({ title: `You do not hold the ${ROLE_LABEL[role]} role`, tone: 'error' })
+        return 'refused'
+      }
+      setSwitching(role)
+      try {
+        let next: User | null
+        try {
+          next = await um.signinSilent({ forceIframeAuth: true, scope: scopeFor(role) })
+        } catch {
+          // No silent answer (the identity provider wants the user, or its cookie is blocked in
+          // a frame): the full-page round trip does the same and comes back to this page.
+          storeRole(role)
+          await redirectToSignIn(role)
+          return 'switched'
+        }
+        if (!next || !switchGranted(role, next.access_token)) {
+          // Refused by Keycloak (the role was taken away since this token was issued). Go back
+          // to the previous role rather than leave a token with none.
+          const previous = roleOf(before)
+          await um.signinSilent({ forceIframeAuth: true, scope: scopeFor(previous) })
+          toast({
+            title: `Not switched to ${ROLE_LABEL[role]}`,
+            detail: 'The identity provider says you do not hold that role.',
+            tone: 'error',
+          })
+          return 'refused'
+        }
+        storeRole(role)
+        // The new token is already in the bridge (freshToken reads the store); refetch it all.
+        void qc.invalidateQueries()
+        toast({
+          title: `Acting as ${ROLE_LABEL[role]}`,
+          detail: 'New sign-in token issued. Screens refreshed for the new role.',
+          tone: 'success',
+        })
+        return 'switched'
+      } catch (e) {
+        toast({
+          title: 'Role not switched',
+          detail: e instanceof Error ? e.message : 'The identity provider did not answer.',
+          tone: 'error',
+        })
+        return 'failed'
+      } finally {
+        setSwitching(null)
+      }
     },
-    [qc],
+    [qc, toast],
   )
 
   const signOut = useCallback(() => {
@@ -198,8 +342,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [])
 
   const value = useMemo<AuthContextValue>(
-    () => ({ status, user, activeRole, setActiveRole, signOut, error, devMode: AUTH_DISABLED }),
-    [status, user, activeRole, setActiveRole, signOut, error],
+    () => ({
+      status,
+      user,
+      activeRole,
+      setActiveRole,
+      switching,
+      signOut,
+      error,
+      devMode: AUTH_DISABLED,
+    }),
+    [status, user, activeRole, setActiveRole, switching, signOut, error],
   )
 
   return <AuthContext value={value}>{children}</AuthContext>

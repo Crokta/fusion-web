@@ -2,7 +2,9 @@ import {
   Activity,
   AlertTriangle,
   Ban,
+  CheckCheck,
   CheckCircle2,
+  FileUp,
   Library,
   Pencil,
   Plus,
@@ -12,7 +14,7 @@ import {
 } from 'lucide-react'
 import { useState } from 'react'
 import { describeError } from '@/api'
-import { type SourceAction, useSourceAction, useSources } from '@/api/queries'
+import { type SourceAction, useSourceAction, useSourceBatch, useSources } from '@/api/queries'
 import {
   ROLE_LABEL,
   type Reliability,
@@ -40,6 +42,7 @@ import {
 import { cn } from '@/lib/cn'
 import { dateTime, since } from '@/lib/format'
 import { useNow } from '@/lib/hooks'
+import { type ParsedImport, parseSourceImport } from './importFile'
 import { PLATFORM_LABEL, crawlErrorText, platformOf, socialTarget } from './social'
 
 type Filter = 'all' | SourceStatus
@@ -103,6 +106,8 @@ export function SourcesPage() {
   const [filter, setFilter] = useState<Filter>('all')
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [proposing, setProposing] = useState(false)
+  const [importing, setImporting] = useState(false)
+  const [approvingAll, setApprovingAll] = useState(false)
 
   const all = sources.data?.items ?? []
   const count = (s: SourceStatus) => all.filter((x) => x.status === s).length
@@ -117,9 +122,14 @@ export function SourcesPage() {
         description="The register of what may be collected. Only approved sources are crawled, and a source is approved by someone other than the person who proposed it."
         actions={
           can.proposeSource(activeRole) && (
-            <Button icon={Plus} size="md" onClick={() => setProposing(true)}>
-              Propose source
-            </Button>
+            <div className="flex gap-2">
+              <Button variant="ghost" icon={FileUp} size="md" onClick={() => setImporting(true)}>
+                Import
+              </Button>
+              <Button icon={Plus} size="md" onClick={() => setProposing(true)}>
+                Propose source
+              </Button>
+            </div>
           )
         }
       />
@@ -137,17 +147,26 @@ export function SourcesPage() {
             title="Register"
             icon={Library}
             actions={
-              <Segmented
-                label="Status"
-                value={filter}
-                onChange={setFilter}
-                options={[
-                  { value: 'all', label: 'All', count: all.length },
-                  { value: 'approved', label: 'Collecting', count: count('approved') },
-                  { value: 'proposed', label: 'Awaiting', count: count('proposed') },
-                  { value: 'suspended', label: 'Suspended', count: count('suspended') },
-                ]}
-              />
+              <div className="flex items-center gap-2">
+                {can.approveSource(activeRole) &&
+                  filter === 'proposed' &&
+                  count('proposed') > 0 && (
+                    <Button variant="ghost" icon={CheckCheck} onClick={() => setApprovingAll(true)}>
+                      Approve all
+                    </Button>
+                  )}
+                <Segmented
+                  label="Status"
+                  value={filter}
+                  onChange={setFilter}
+                  options={[
+                    { value: 'all', label: 'All', count: all.length },
+                    { value: 'approved', label: 'Collecting', count: count('approved') },
+                    { value: 'proposed', label: 'Awaiting', count: count('proposed') },
+                    { value: 'suspended', label: 'Suspended', count: count('suspended') },
+                  ]}
+                />
+              </div>
             }
             bodyClassName="p-0"
           >
@@ -210,6 +229,13 @@ export function SourcesPage() {
       )}
 
       <ProposeModal open={proposing} onClose={() => setProposing(false)} />
+      {importing && <ImportModal onClose={() => setImporting(false)} />}
+      {approvingAll && (
+        <ApproveAllModal
+          sources={all.filter((s) => s.status === 'proposed')}
+          onClose={() => setApprovingAll(false)}
+        />
+      )}
     </div>
   )
 }
@@ -460,6 +486,210 @@ function AddressNote({ kind, url }: { kind: SourceKind; url: string }) {
     <p className="-mt-2 text-[11.5px] text-amber" role="alert">
       {t.problem}
     </p>
+  )
+}
+
+const versionOf = (etag: string) => Number(etag.replace(/\D/g, ''))
+
+/** Many proposals at once, from a file such as fusion-intake/seed/sources.json. */
+function ImportModal({ onClose }: { onClose: () => void }) {
+  const { importing } = useSourceBatch()
+  const toast = useToast()
+  const [parsed, setParsed] = useState<ParsedImport | null>(null)
+  const [fileName, setFileName] = useState('')
+  const result = importing.data
+
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      title="Import sources"
+      description="Each new address becomes a proposal by you; someone else approves it. Addresses already in the register are skipped."
+    >
+      {result ? (
+        <div className="space-y-3 text-[12.5px]">
+          <p className="text-ink-2">
+            <span className="font-medium text-green">{result.created.length} proposed</span>
+            {result.skipped.length > 0 && <>, {result.skipped.length} already in the register</>}
+            {result.invalid.length > 0 && (
+              <span className="text-amber">, {result.invalid.length} refused</span>
+            )}
+            .
+          </p>
+          {result.invalid.length > 0 && (
+            <ul className="max-h-40 space-y-1 overflow-y-auto text-[11.5px] text-ink-muted">
+              {result.invalid.map((x) => (
+                <li key={`${x.index}-${x.field}`}>
+                  Row {x.index + 1}, {x.field}: {x.message}
+                </li>
+              ))}
+            </ul>
+          )}
+          <div className="flex justify-end">
+            <Button onClick={onClose}>Done</Button>
+          </div>
+        </div>
+      ) : (
+        <div className="space-y-4">
+          <Field
+            label="File"
+            hint='JSON: a list of {name, kind, url, reliability}, or {"sources": [...]}'
+          >
+            <input
+              type="file"
+              accept="application/json,.json"
+              className="block w-full text-[12.5px] text-ink-2 file:mr-3 file:rounded-md file:border-0 file:bg-white/[0.06] file:px-3 file:py-1.5 file:text-ink"
+              onChange={async (e) => {
+                const f = e.target.files?.[0]
+                if (!f) return
+                setFileName(f.name)
+                setParsed(parseSourceImport(await f.text()))
+              }}
+            />
+          </Field>
+          {parsed && (
+            <div className="space-y-2 text-[12.5px]">
+              <p className="text-ink-2">
+                {fileName}: <span className="font-medium">{parsed.sources.length}</span> source(s)
+                to propose
+                {parsed.social > 0 && <>, {parsed.social} of them social</>}.
+              </p>
+              {parsed.social > 0 && (
+                <p className="text-[11.5px] text-ink-muted">
+                  Once approved, each social source is a paid Bright Data job every round. Set a
+                  monthly cap on the Bright Data screen first.
+                </p>
+              )}
+              {parsed.problems.length > 0 && (
+                <ul
+                  className="max-h-32 space-y-1 overflow-y-auto text-[11.5px] text-amber"
+                  role="alert"
+                >
+                  {parsed.problems.map((p) => (
+                    <li key={p}>{p}</li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          )}
+          <div className="flex justify-end gap-2">
+            <Button variant="ghost" onClick={onClose} disabled={importing.isPending}>
+              Cancel
+            </Button>
+            <Button
+              icon={FileUp}
+              disabled={!parsed || parsed.sources.length === 0}
+              loading={importing.isPending}
+              onClick={() =>
+                parsed &&
+                importing.mutate(parsed.sources, {
+                  onError: (e) =>
+                    toast({ title: 'Import refused', detail: describeError(e), tone: 'error' }),
+                })
+              }
+            >
+              Propose {parsed?.sources.length ?? 0}
+            </Button>
+          </div>
+        </div>
+      )}
+    </Modal>
+  )
+}
+
+/** Every proposal waiting, except your own: someone else approves those. */
+function ApproveAllModal({ sources, onClose }: { sources: SourceRecord[]; onClose: () => void }) {
+  const { user } = useAuth()
+  const { approving } = useSourceBatch()
+  const toast = useToast()
+  const [withSocial, setWithSocial] = useState(false)
+  const mine = sources.filter((s) => s.proposedBy.id === user?.id)
+  const others = sources.filter((s) => s.proposedBy.id !== user?.id)
+  const social = others.filter((s) => s.kind === 'social').length
+  // Social sources spend Bright Data credits every round: left out unless asked for.
+  const theirs = withSocial ? others : others.filter((s) => s.kind !== 'social')
+  const result = approving.data
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      title="Approve all awaiting"
+      description="Each is approved under the same rules as one at a time, and audited."
+    >
+      {result ? (
+        <div className="space-y-3 text-[12.5px]">
+          <p className="text-ink-2">
+            <span className="font-medium text-green">{result.approved.length} approved</span>
+            {result.refused.length > 0 && (
+              <span className="text-amber">, {result.refused.length} refused</span>
+            )}
+            . They are crawled from the next round.
+          </p>
+          {result.refused.length > 0 && (
+            <ul className="max-h-40 space-y-1 overflow-y-auto text-[11.5px] text-ink-muted">
+              {result.refused.map((r) => (
+                <li key={r.id}>
+                  {sources.find((s) => s.id === r.id)?.name ?? r.id}: {r.message}
+                </li>
+              ))}
+            </ul>
+          )}
+          <div className="flex justify-end">
+            <Button onClick={onClose}>Done</Button>
+          </div>
+        </div>
+      ) : (
+        <div className="space-y-3 text-[12.5px]">
+          <p className="text-ink-2">
+            Approve <span className="font-medium">{theirs.length}</span> source(s).
+          </p>
+          {social > 0 && (
+            <label className="flex items-start gap-2.5 text-[12.5px] text-ink-2">
+              <input
+                type="checkbox"
+                className="mt-0.5"
+                checked={withSocial}
+                onChange={(e) => setWithSocial(e.target.checked)}
+              />
+              <span>
+                Include {social} social source(s)
+                <span className="block text-[11.5px] text-ink-muted">
+                  Each is a paid Bright Data job every round, up to its post limit. Set a monthly
+                  cap on the Bright Data screen first.
+                </span>
+              </span>
+            </label>
+          )}
+          {mine.length > 0 && (
+            <p className="text-[11.5px] text-ink-muted">
+              {mine.length} you proposed are left for someone else to approve.
+            </p>
+          )}
+          <div className="flex justify-end gap-2">
+            <Button variant="ghost" onClick={onClose} disabled={approving.isPending}>
+              Cancel
+            </Button>
+            <Button
+              variant="success"
+              icon={CheckCheck}
+              disabled={theirs.length === 0}
+              loading={approving.isPending}
+              onClick={() =>
+                approving.mutate(
+                  theirs.map((s) => ({ id: s.id, version: versionOf(s.etag) })),
+                  {
+                    onError: (e) =>
+                      toast({ title: 'Approval refused', detail: describeError(e), tone: 'error' }),
+                  },
+                )
+              }
+            >
+              Approve {theirs.length}
+            </Button>
+          </div>
+        </div>
+      )}
+    </Modal>
   )
 }
 

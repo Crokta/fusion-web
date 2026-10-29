@@ -15,6 +15,7 @@ import { Route as AdminRouteImport } from './routes/admin'
 import { Route as ApprovalsRouteImport } from './routes/approvals'
 import { Route as CollectionRouteImport } from './routes/collection'
 import { Route as FeedRouteImport } from './routes/feed'
+import { Route as ProviderRouteImport } from './routes/provider'
 import { Route as ReviewRouteImport } from './routes/review'
 import { Route as RosterRouteImport } from './routes/roster'
 import { Route as SearchRouteImport } from './routes/search'
@@ -54,6 +55,11 @@ const CollectionRoute = CollectionRouteImport.update({
 const FeedRoute = FeedRouteImport.update({
   id: '/feed',
   path: '/feed',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ProviderRoute = ProviderRouteImport.update({
+  id: '/provider',
+  path: '/provider',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ReviewRoute = ReviewRouteImport.update({
@@ -114,6 +120,7 @@ export interface FileRoutesByFullPath {
   '/approvals': typeof ApprovalsRoute
   '/collection': typeof CollectionRoute
   '/feed': typeof FeedRoute
+  '/provider': typeof ProviderRoute
   '/review': typeof ReviewRoute
   '/roster': typeof RosterRoute
   '/search': typeof SearchRoute
@@ -132,6 +139,7 @@ export interface FileRoutesByTo {
   '/approvals': typeof ApprovalsRoute
   '/collection': typeof CollectionRoute
   '/feed': typeof FeedRoute
+  '/provider': typeof ProviderRoute
   '/review': typeof ReviewRoute
   '/roster': typeof RosterRoute
   '/search': typeof SearchRoute
@@ -151,6 +159,7 @@ export interface FileRoutesById {
   '/approvals': typeof ApprovalsRoute
   '/collection': typeof CollectionRoute
   '/feed': typeof FeedRoute
+  '/provider': typeof ProviderRoute
   '/review': typeof ReviewRoute
   '/roster': typeof RosterRoute
   '/search': typeof SearchRoute
@@ -171,6 +180,7 @@ export interface FileRouteTypes {
     | '/approvals'
     | '/collection'
     | '/feed'
+    | '/provider'
     | '/review'
     | '/roster'
     | '/search'
@@ -189,6 +199,7 @@ export interface FileRouteTypes {
     | '/approvals'
     | '/collection'
     | '/feed'
+    | '/provider'
     | '/review'
     | '/roster'
     | '/search'
@@ -207,6 +218,7 @@ export interface FileRouteTypes {
     | '/approvals'
     | '/collection'
     | '/feed'
+    | '/provider'
     | '/review'
     | '/roster'
     | '/search'
@@ -226,6 +238,7 @@ export interface RootRouteChildren {
   ApprovalsRoute: typeof ApprovalsRoute
   CollectionRoute: typeof CollectionRoute
   FeedRoute: typeof FeedRoute
+  ProviderRoute: typeof ProviderRoute
   ReviewRoute: typeof ReviewRoute
   RosterRoute: typeof RosterRoute
   SearchRoute: typeof SearchRoute
@@ -280,6 +293,13 @@ declare module '@tanstack/react-router' {
       path: '/feed'
       fullPath: '/feed'
       preLoaderRoute: typeof FeedRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/provider': {
+      id: '/provider'
+      path: '/provider'
+      fullPath: '/provider'
+      preLoaderRoute: typeof ProviderRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/review': {
@@ -362,6 +382,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApprovalsRoute: ApprovalsRoute,
   CollectionRoute: CollectionRoute,
   FeedRoute: FeedRoute,
+  ProviderRoute: ProviderRoute,
   ReviewRoute: ReviewRoute,
   RosterRoute: RosterRoute,
   SearchRoute: SearchRoute,

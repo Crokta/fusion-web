@@ -45,7 +45,23 @@ import {
 import type { FusionApi } from './contract'
 import { ApiError, toProblem } from './problem'
 import { session } from './session'
-import type { DutyTier, FindingInput, Kpi, Me, PersonContact, SearchHit, WallPreset } from './types'
+import type {
+  DutyTier,
+  FindingInput,
+  Kpi,
+  Me,
+  MediaAnalysis,
+  MediaScreening,
+  PersonContact,
+  ProviderBudget,
+  ProviderReport,
+  ProviderTerms,
+  SearchHit,
+  SourceApproveResult,
+  SourceImportResult,
+  WallPreset,
+  WorkingCopy,
+} from './types'
 
 export const API_BASE = (import.meta.env.VITE_API_BASE ?? 'http://localhost:5100').replace(
   /\/$/,
@@ -214,17 +230,41 @@ export const httpApi: FusionApi = {
   },
 
   sources: async (p) => {
-    const page = await request<PageDto<SourceViewDto>>('/sources', {
-      query: { status: p?.status, limit: '200' },
-    })
-    const name = await nameOf(page.items.flatMap((s) => [s.proposedBy, s.approvedBy]))
-    return { items: page.items.map((s) => toSourceRecord(s, name)), nextCursor: page.nextCursor }
+    // The whole register: a starting set is about a hundred, and intake pages at 200.
+    const all: SourceViewDto[] = []
+    let cursor: string | undefined
+    do {
+      const page: PageDto<SourceViewDto> = await request<PageDto<SourceViewDto>>('/sources', {
+        query: { status: p?.status, limit: '200', cursor },
+      })
+      all.push(...page.items)
+      cursor = page.nextCursor ?? undefined
+    } while (cursor && all.length < 2000)
+    const name = await nameOf(all.flatMap((s) => [s.proposedBy, s.approvedBy]))
+    return { items: all.map((s) => toSourceRecord(s, name)), nextCursor: null }
   },
   proposeSource: (input) => sourceCall('/sources', { method: 'POST', body: input }),
   editSource: (id, input, etag) =>
     sourceCall(`/sources/${enc(id)}`, { method: 'PUT', body: input, ifMatch: etag }),
   approveSource: (id, etag) =>
     sourceCall(`/sources/${enc(id)}/approve`, { method: 'POST', ifMatch: etag }),
+  importSources: async (sources) => {
+    const r = await request<{
+      created: SourceViewDto[]
+      skipped: SourceImportResult['skipped']
+      invalid: SourceImportResult['invalid']
+    }>('/sources/import', { method: 'POST', body: { sources } })
+    const name = await nameOf(r.created.flatMap((s) => [s.proposedBy, s.approvedBy]))
+    return { ...r, created: r.created.map((s) => toSourceRecord(s, name)) }
+  },
+  approveSources: async (items) => {
+    const r = await request<{ approved: SourceViewDto[]; refused: SourceApproveResult['refused'] }>(
+      '/sources/approve',
+      { method: 'POST', body: { items } },
+    )
+    const name = await nameOf(r.approved.flatMap((s) => [s.proposedBy, s.approvedBy]))
+    return { ...r, approved: r.approved.map((s) => toSourceRecord(s, name)) }
+  },
   suspendSource: (id, reason, etag) =>
     sourceCall(`/sources/${enc(id)}/suspend`, { method: 'POST', body: { reason }, ifMatch: etag }),
   reinstateSource: (id, etag) =>
@@ -304,6 +344,28 @@ export const httpApi: FusionApi = {
     toShift(await request<ShiftDto>('/duty-roster/shifts', { method: 'POST', body: input })),
   removeShift: async (id) => {
     await request<void>(`/duty-roster/shifts/${enc(id)}`, { method: 'DELETE' })
+  },
+
+  // casework, media and evidence answer camelCase in the screens' own shapes.
+  caseMedia: (caseId) => request<MediaScreening[]>(`/cases/${enc(caseId)}/media`),
+  mediaAnalysis: async (evidenceId) => {
+    try {
+      return await request<MediaAnalysis>(`/media/evidence/${enc(evidenceId)}`)
+    } catch (e) {
+      if (e instanceof ApiError && e.status === 404) return null
+      throw e
+    }
+  },
+  workingCopy: (evidenceId) => request<WorkingCopy>(`/evidence/${enc(evidenceId)}/working-copy`),
+
+  // collector's API is camelCase already (fusion_web ApiModel): no adapter needed.
+  provider: () => request<ProviderReport>('/provider'),
+  setProviderBudget: (monthlyCreditCap) =>
+    request<ProviderBudget>('/provider/budget', { method: 'PUT', body: { monthlyCreditCap } }),
+  setProviderTerms: (sourceId, input) =>
+    request<ProviderTerms>(`/provider/sources/${enc(sourceId)}`, { method: 'PUT', body: input }),
+  clearProviderHost: async (host) => {
+    await request<void>(`/provider/hosts/${enc(host)}`, { method: 'DELETE' })
   },
   searchPeople: async (q) =>
     (

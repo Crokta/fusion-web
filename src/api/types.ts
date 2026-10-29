@@ -463,6 +463,19 @@ export interface SourceCollection {
   lastErrorAt: string | null
 }
 
+/** intake's POST /sources/import: each new address becomes a proposal; duplicates and bad rows are reported. */
+export interface SourceImportResult {
+  created: SourceRecord[]
+  skipped: { index: number; url: string; reason: string }[]
+  invalid: { index: number; field: string; message: string }[]
+}
+
+/** intake's POST /sources/approve: each source approved under the same rules as one at a time. */
+export interface SourceApproveResult {
+  approved: SourceRecord[]
+  refused: { id: string; code: string; message: string }[]
+}
+
 export interface SourceInput {
   name: string
   kind: SourceKind
@@ -698,3 +711,142 @@ export interface LiveEventMap {
 }
 
 export type LiveEventName = keyof LiveEventMap
+
+/** The Bright Data screen (collector's /provider, ADR 0007). One credit = one post or one Unlocker request. */
+export interface ProviderTerms {
+  maxPosts: number | null
+  minIntervalMinutes: number | null
+  paused: boolean
+  updatedBy: string | null
+  updatedAt: string | null
+}
+
+export interface ProviderSourceUsage {
+  sourceId: string
+  creditsThisMonth: number
+  jobsThisMonth: number
+  lastJobAt: string | null
+  terms: ProviderTerms
+  pendingSnapshot: string | null
+}
+
+export interface ProviderHost {
+  host: string
+  creditsThisMonth: number
+  /** Seconds left of fetching through the Unlocker without a direct try; null when tried directly. */
+  unlockedForSeconds: number | null
+}
+
+export interface ProviderBudget {
+  monthlyCreditCap: number | null
+  usedThisMonth: number
+  scraperThisMonth: number
+  unlockerThisMonth: number
+  left: number | null
+  monthStarts: string
+  updatedBy: string | null
+  updatedAt: string | null
+}
+
+export interface ProviderReport {
+  provider: 'brightdata'
+  configured: boolean
+  unlockerZone: string | null
+  defaults: { maxPosts: number; waitSeconds: number; unlockerBlockedHours: number }
+  budget: ProviderBudget
+  days: { date: string; scraper: number; unlocker: number }[]
+  sources: ProviderSourceUsage[]
+  hosts: ProviderHost[]
+}
+
+export interface ProviderTermsInput {
+  maxPosts: number | null
+  minIntervalMinutes: number | null
+  paused: boolean
+}
+
+/** casework's screening of one image or video in a case (GET /cases/{id}/media). */
+export interface MediaScreening {
+  jobId: string
+  evidenceId: string
+  contentType: string
+  status: 'requested' | 'screened' | 'failed'
+  requestedAt: string
+  screenedAt: string | null
+  /** media's own words, its code first (sha256_mismatch, too_large…). */
+  failure: string | null
+  c2paPresent: boolean | null
+  /** The combined verdict: LikelySynthetic, LikelyAuthentic or Inconclusive. */
+  verdict: string | null
+  confidence: number | null
+  indicators: {
+    detector: string
+    modelVersion: string
+    verdict: string
+    confidence: number | null
+  }[]
+}
+
+/** media's analysis of one original (GET /media/evidence/{id}); null parts while it runs. */
+export interface MediaAnalysis {
+  evidenceId: string
+  job: {
+    id: string
+    kind: 'screen' | 'analyse'
+    status: 'running' | 'completed' | 'failed'
+    receivedAt: string
+    completedAt: string | null
+    failure: { code: string; message: string } | null
+    detectorsRun: boolean
+    note: string | null
+  }
+  role: string | null
+  sourceUrl: string | null
+  contentType: string
+  sizeBytes: number
+  sha256: string
+  sha256Verified: boolean
+  mediaKind: 'image' | 'video' | 'other'
+  metadata: {
+    format: string | null
+    width: number | null
+    height: number | null
+    durationSeconds: number | null
+    videoCodec: string | null
+    audioCodec: string | null
+    frameRate: number | null
+    cameraMake: string | null
+    cameraModel: string | null
+    capturedAt: string | null
+    software: string | null
+    exifPresent: boolean
+    xmpPresent: boolean
+    metadataStripped: boolean
+    location: { present: boolean; latitude: number | null; longitude: number | null }
+  } | null
+  c2pa: {
+    status: 'absent' | 'present_not_validated' | 'valid' | 'invalid'
+    claimGenerator: string | null
+    signedBy: string | null
+    digitalSourceType: string | null
+    aiGenerated: boolean | null
+    validationErrors: string[]
+  } | null
+  fingerprints: { kind: string; value: string; atSeconds: number | null }[] | null
+  indicators: {
+    detector: string
+    modelVersion: string
+    verdict: string
+    confidence: number | null
+    limitations: string | null
+  }[]
+  combined: { verdict: string; confidence: number | null } | null
+}
+
+/** evidence's working copy: a read-only copy and a short-lived link; reading it is audited. */
+export interface WorkingCopy {
+  url: string
+  expiresAt: string
+  contentType: string
+  sizeBytes: number
+}

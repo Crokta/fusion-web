@@ -140,8 +140,8 @@ export function CommandPalette() {
           keywords: 'role switch',
           run: () => {
             close()
-            setActiveRole(r)
-            toast({ title: `Acting as ${ROLE_LABEL[r]}`, tone: 'success' })
+            // AuthProvider gets the new token and reports the outcome (ADR 0008).
+            void setActiveRole(r)
           },
         })
     return list

@@ -14,8 +14,11 @@ import type {
   LiveEventMap,
   LiveEventName,
   Me,
+  ProviderReport,
   Role,
   SearchKind,
+  SourceApproveResult,
+  SourceImportResult,
   SourceRecord,
   StoryGroup,
   WallState,
@@ -30,7 +33,66 @@ import * as fx from './fixtures'
 
 const clone = <T>(v: T): T => structuredClone(v)
 
+/** A month of Bright Data use for the two social fixtures and one blocked site. */
+function mockProvider(): ProviderReport {
+  const now = new Date()
+  const days = Array.from({ length: 30 }, (_, i) => {
+    const d = new Date(now.getTime() - (29 - i) * 86_400_000)
+    return {
+      date: d.toISOString().slice(0, 10),
+      scraper: i < 26 ? 0 : 10 + (i % 3) * 10,
+      unlocker: i < 27 ? 0 : 6,
+    }
+  })
+  const terms = {
+    maxPosts: null,
+    minIntervalMinutes: null,
+    paused: false,
+    updatedBy: null,
+    updatedAt: null,
+  }
+  return {
+    provider: 'brightdata',
+    configured: true,
+    unlockerZone: 'fusion_unlocker',
+    defaults: { maxPosts: 10, waitSeconds: 150, unlockerBlockedHours: 6 },
+    budget: {
+      monthlyCreditCap: 2000,
+      usedThisMonth: 138,
+      scraperThisMonth: 120,
+      unlockerThisMonth: 18,
+      left: 1862,
+      monthStarts: new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)).toISOString(),
+      updatedBy: 'u-musa',
+      updatedAt: new Date(now.getTime() - 3 * 86_400_000).toISOString(),
+    },
+    days,
+    sources: [
+      {
+        sourceId: 'src-social-x',
+        creditsThisMonth: 100,
+        jobsThisMonth: 10,
+        lastJobAt: new Date(now.getTime() - 22 * 60_000).toISOString(),
+        terms: { ...terms },
+        pendingSnapshot: null,
+      },
+      {
+        sourceId: 'src-social-fb',
+        creditsThisMonth: 20,
+        jobsThisMonth: 2,
+        lastJobAt: new Date(now.getTime() - 47 * 60_000).toISOString(),
+        terms: { ...terms, paused: true, updatedBy: 'u-musa', updatedAt: now.toISOString() },
+        pendingSnapshot: null,
+      },
+    ],
+    hosts: [
+      { host: 'blocked-daily.example.ng', creditsThisMonth: 18, unlockedForSeconds: 4 * 3600 },
+    ],
+  }
+}
+
 const db = {
+  provider: mockProvider(),
   cases: clone(fx.caseSummaries),
   feed: clone(fx.storyGroups),
   triage: clone(fx.triageItems),
@@ -432,6 +494,84 @@ export const mockApi: FusionApi = {
       audit('allowed', 'source.propose', s.name)
       return s
     }),
+  importSources: (items) =>
+    delay(() => {
+      requireRole(['analyst', 'supervisor'], 'Proposing sources')
+      const key = (u: string) => {
+        const x = new URL(u)
+        return `${x.protocol}//${x.host.toLowerCase()}${x.pathname.replace(/\/$/, '')}${x.search}`
+      }
+      const seen = new Set(db.sources.map((s) => key(s.url)))
+      const result: SourceImportResult = { created: [], skipped: [], invalid: [] }
+      items.forEach((input, index) => {
+        if (!input.name?.trim())
+          return result.invalid.push({ index, field: 'name', message: 'A source needs a name.' })
+        let k: string
+        try {
+          k = key(input.url)
+        } catch {
+          return result.invalid.push({
+            index,
+            field: 'url',
+            message: 'Not an http or https address.',
+          })
+        }
+        if (seen.has(k)) return result.skipped.push({ index, url: input.url, reason: 'duplicate' })
+        seen.add(k)
+        const s: SourceRecord = {
+          id: `src-${crypto.randomUUID()}`,
+          ...input,
+          host: new URL(input.url).hostname.replace(/^www\./, ''),
+          status: 'proposed',
+          proposedBy: me(),
+          proposedAt: new Date().toISOString(),
+          approvedBy: null,
+          approvedAt: null,
+          suspendedReason: null,
+          suspendedAt: null,
+          etag: '"v0"',
+          collection: { lastCrawlAt: null, lastStoryAt: null, lastError: null, lastErrorAt: null },
+        }
+        db.sources.unshift(s)
+        result.created.push(s)
+      })
+      audit('allowed', 'source.import', `${result.created.length} proposed`)
+      return clone(result)
+    }),
+  approveSources: (items) =>
+    delay(() => {
+      requireRole(['supervisor', 'centre_lead'], 'Approving sources')
+      const result: SourceApproveResult = { approved: [], refused: [] }
+      for (const { id, version } of items) {
+        const s = db.sources.find((x) => x.id === id)
+        if (!s) result.refused.push({ id, code: 'not_found', message: 'No such source.' })
+        else if (s.etag !== `"v${version}"`)
+          result.refused.push({
+            id,
+            code: 'precondition_failed',
+            message: 'Changed since you looked.',
+          })
+        else if (s.status !== 'proposed')
+          result.refused.push({
+            id,
+            code: 'conflict',
+            message: 'Only a proposed source can be approved.',
+          })
+        else if (s.proposedBy.id === me().id)
+          result.refused.push({ id, code: 'self_approval_forbidden', message: 'You proposed it.' })
+        else {
+          Object.assign(s, {
+            status: 'approved',
+            approvedBy: me(),
+            approvedAt: new Date().toISOString(),
+          })
+          bumpSource(s)
+          result.approved.push(clone(s))
+        }
+      }
+      audit('allowed', 'source.approve', `${result.approved.length} approved`)
+      return result
+    }),
   editSource: (id, input, etag) =>
     delay(() => {
       requireRole(['analyst', 'supervisor'], 'Editing a source')
@@ -556,6 +696,161 @@ export const mockApi: FusionApi = {
       db.shifts.push(shift)
       audit('allowed', 'roster.add', `${shift.name} · ${shift.tier}`)
       return shift
+    }),
+  caseMedia: (caseId) =>
+    delay(() => {
+      const media = liveCase(caseId).evidence.filter(
+        (e) => e.kind === 'image' || e.kind === 'video',
+      )
+      return media.map((e, i) => ({
+        jobId: `job-${e.id}`,
+        evidenceId: e.id,
+        contentType: e.kind === 'image' ? 'image/jpeg' : 'video/mp4',
+        status: i === 0 ? ('screened' as const) : ('requested' as const),
+        requestedAt: new Date(Date.now() - 3600_000).toISOString(),
+        screenedAt: i === 0 ? new Date(Date.now() - 3500_000).toISOString() : null,
+        failure: null,
+        c2paPresent: i === 0 ? false : null,
+        verdict: i === 0 ? 'Inconclusive' : null,
+        confidence: null,
+        indicators:
+          i === 0
+            ? [
+                {
+                  detector: 'stub',
+                  modelVersion: '0.0.0-stub',
+                  verdict: 'Inconclusive',
+                  confidence: null,
+                },
+              ]
+            : [],
+      }))
+    }),
+  mediaAnalysis: (evidenceId) =>
+    delay(() => ({
+      evidenceId,
+      job: {
+        id: `job-${evidenceId}`,
+        kind: 'screen' as const,
+        status: 'completed' as const,
+        receivedAt: new Date(Date.now() - 3600_000).toISOString(),
+        completedAt: new Date(Date.now() - 3500_000).toISOString(),
+        failure: null,
+        detectorsRun: true,
+        note: null,
+      },
+      role: 'image',
+      sourceUrl: 'https://example-desk.ng/2026/10/28/market-fire',
+      contentType: 'image/jpeg',
+      sizeBytes: 482_113,
+      sha256: 'a3f1c9e2b7d4'.padEnd(64, '0'),
+      sha256Verified: true,
+      mediaKind: 'image' as const,
+      metadata: {
+        format: 'JPEG',
+        width: 1600,
+        height: 1067,
+        durationSeconds: null,
+        videoCodec: null,
+        audioCodec: null,
+        frameRate: null,
+        cameraMake: null,
+        cameraModel: null,
+        capturedAt: null,
+        software: null,
+        exifPresent: false,
+        xmpPresent: false,
+        metadataStripped: true,
+        location: { present: false, latitude: null, longitude: null },
+      },
+      c2pa: {
+        status: 'absent' as const,
+        claimGenerator: null,
+        signedBy: null,
+        digitalSourceType: null,
+        aiGenerated: null,
+        validationErrors: [],
+      },
+      fingerprints: [
+        { kind: 'sha256', value: 'a3f1c9e2b7d4'.padEnd(64, '0'), atSeconds: null },
+        { kind: 'phash', value: 'c3a1e0f07c3e1f0f', atSeconds: null },
+      ],
+      indicators: [
+        {
+          detector: 'stub',
+          modelVersion: '0.0.0-stub',
+          verdict: 'Inconclusive',
+          confidence: null,
+          limitations: 'No model yet (E21).',
+        },
+      ],
+      combined: { verdict: 'Inconclusive', confidence: null },
+    })),
+  workingCopy: (evidenceId) =>
+    delay(() => {
+      audit('allowed', 'evidence.working_copy.read', evidenceId)
+      const svg =
+        "<svg xmlns='http://www.w3.org/2000/svg' width='640' height='400'><rect width='640' height='400' fill='%23132433'/><text x='50%' y='50%' fill='%237f97a8' font-family='sans-serif' font-size='20' text-anchor='middle'>Working copy (mock)</text></svg>"
+      return {
+        url: `data:image/svg+xml;utf8,${svg}`,
+        expiresAt: new Date(Date.now() + 15 * 60_000).toISOString(),
+        contentType: 'image/svg+xml',
+        sizeBytes: svg.length,
+      }
+    }),
+  provider: () =>
+    delay(() => {
+      requireRole(['analyst', 'supervisor', 'centre_lead', 'admin'], 'Reading collection spend')
+      return clone(db.provider)
+    }),
+  setProviderBudget: (monthlyCreditCap) =>
+    delay(() => {
+      requireRole(['supervisor', 'centre_lead'], 'Setting the Bright Data budget')
+      const b = db.provider.budget
+      Object.assign(b, {
+        monthlyCreditCap,
+        left: monthlyCreditCap === null ? null : Math.max(monthlyCreditCap - b.usedThisMonth, 0),
+        updatedBy: me().id,
+        updatedAt: new Date().toISOString(),
+      })
+      audit(
+        'allowed',
+        'provider.budget',
+        monthlyCreditCap === null ? 'no cap' : `${monthlyCreditCap}`,
+      )
+      return clone(b)
+    }),
+  setProviderTerms: (sourceId, input) =>
+    delay(() => {
+      requireRole(['supervisor', 'centre_lead'], 'Changing a source’s Bright Data terms')
+      let row = db.provider.sources.find((x) => x.sourceId === sourceId)
+      if (!row) {
+        row = {
+          sourceId,
+          creditsThisMonth: 0,
+          jobsThisMonth: 0,
+          lastJobAt: null,
+          terms: {
+            maxPosts: null,
+            minIntervalMinutes: null,
+            paused: false,
+            updatedBy: null,
+            updatedAt: null,
+          },
+          pendingSnapshot: null,
+        }
+        db.provider.sources.push(row)
+      }
+      row.terms = { ...input, updatedBy: me().id, updatedAt: new Date().toISOString() }
+      audit('allowed', 'provider.source_terms', sourceId)
+      return clone(row.terms)
+    }),
+  clearProviderHost: (host) =>
+    delay(() => {
+      requireRole(['supervisor', 'centre_lead'], 'Clearing a blocked host')
+      const h = db.provider.hosts.find((x) => x.host === host)
+      if (h) h.unlockedForSeconds = null
+      audit('allowed', 'provider.host_cleared', host)
     }),
   removeShift: (id) =>
     delay(() => {

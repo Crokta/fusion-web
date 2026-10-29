@@ -8,14 +8,16 @@ import {
   Globe,
   Image,
   MessageSquareQuote,
+  PlayCircle,
   ShieldCheck,
   type LucideIcon,
 } from 'lucide-react'
 import { useState } from 'react'
-import type { EvidenceItem } from '@/api/types'
+import type { EvidenceItem, MediaScreening } from '@/api/types'
 import { useToast } from '@/components/Toaster'
 import { Badge, MarkingTag } from '@/components/ui'
 import { dateTime } from '@/lib/format'
+import { MediaViewer, ScreeningBadge } from './MediaViewer'
 
 export const evidenceIcon: Record<EvidenceItem['kind'], LucideIcon> = {
   image: Image,
@@ -33,9 +35,18 @@ const withoutScheme = (url: string) => url.replace(/^https?:\/\/(www\.)?/, '')
  * grow to fit it. Each row says what the file is first; the facts that prove it (time, hash,
  * timestamp, custody, marking) sit beside it on a wide panel and under it on a narrow one.
  */
-export function EvidenceList({ evidence }: { evidence: EvidenceItem[] }) {
+export function EvidenceList({
+  evidence,
+  screenings,
+}: {
+  evidence: EvidenceItem[]
+  /** casework's media screenings, for a case; a triage item has none yet. */
+  screenings?: MediaScreening[]
+}) {
   const toast = useToast()
   const [copied, setCopied] = useState<string | null>(null)
+  const [viewing, setViewing] = useState<EvidenceItem | null>(null)
+  const screeningOf = (id: string) => screenings?.find((m) => m.evidenceId === id)
   const copy = async (e: EvidenceItem) => {
     try {
       await navigator.clipboard.writeText(e.sha256)
@@ -111,10 +122,35 @@ export function EvidenceList({ evidence }: { evidence: EvidenceItem[] }) {
                 {e.custodyEvents} custody
               </span>
               <MarkingTag marking={e.marking} />
+              {(e.kind === 'image' || e.kind === 'video') && (
+                <>
+                  <ScreeningBadge screening={screeningOf(e.id)} />
+                  <button
+                    type="button"
+                    onClick={() => setViewing(e)}
+                    className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] font-medium text-cyan hover:bg-cyan/10"
+                    aria-label={`View ${e.ref}`}
+                  >
+                    {e.kind === 'video' ? (
+                      <PlayCircle size={12} aria-hidden />
+                    ) : (
+                      <Image size={12} aria-hidden />
+                    )}
+                    View
+                  </button>
+                </>
+              )}
             </div>
           </li>
         )
       })}
+      {viewing && (
+        <MediaViewer
+          evidence={viewing}
+          screening={screeningOf(viewing.id)}
+          onClose={() => setViewing(null)}
+        />
+      )}
     </ul>
   )
 }

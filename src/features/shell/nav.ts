@@ -19,6 +19,7 @@ import {
   Users,
   Waypoints,
   type LucideIcon,
+  CircleDollarSign,
 } from 'lucide-react'
 
 export interface NavItem {
@@ -122,6 +123,13 @@ export const NAV: NavGroup[] = [
         label: 'Collection',
         icon: Archive,
         description: 'Source register: propose, approve, suspend, reinstate and edit sources.',
+      },
+      {
+        to: '/provider',
+        label: 'Bright Data',
+        icon: CircleDollarSign,
+        description:
+          'Credits spent on social sources and the Web Unlocker: the monthly cap, each source’s terms, blocked sites.',
       },
       {
         to: '/live-feeds',

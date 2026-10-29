@@ -3,7 +3,6 @@ import { useEffect, useRef, useState } from 'react'
 import { ROLE_LABEL, type Role } from '@/api/types'
 import { useAuth } from '@/auth/AuthProvider'
 import { Avatar } from '@/components/ui'
-import { useToast } from '@/components/Toaster'
 import { cn } from '@/lib/cn'
 
 const ROLE_HINT: Record<Role, string> = {
@@ -17,12 +16,13 @@ const ROLE_HINT: Record<Role, string> = {
 }
 
 /**
- * The active-role switcher. Users act in one role at a time; switching refetches every query
- * because the gateway filters responses by role.
+ * The active-role switcher. Users act in one role at a time, the access token's active_role;
+ * choosing one gets a new token in that role from the identity provider (ADR 0008), then every
+ * query refetches because the services answer by role. Only roles the token says the user
+ * holds are offered.
  */
 export function UserMenu() {
-  const { user, activeRole, setActiveRole, signOut, devMode } = useAuth()
-  const toast = useToast()
+  const { user, activeRole, setActiveRole, switching, signOut, devMode } = useAuth()
   const [open, setOpen] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
 
@@ -54,7 +54,9 @@ export function UserMenu() {
           <span className="block text-[12.5px] font-medium text-ink">
             {user.name.split(' ')[0]}
           </span>
-          <span className="mt-1 block text-[10.5px] text-cyan/90">{ROLE_LABEL[activeRole]}</span>
+          <span className="mt-1 block text-[10.5px] text-cyan/90">
+            {switching ? `Switching to ${ROLE_LABEL[switching]}…` : ROLE_LABEL[activeRole]}
+          </span>
         </span>
         <ChevronDown
           size={13}
@@ -86,17 +88,14 @@ export function UserMenu() {
               type="button"
               role="menuitemradio"
               aria-checked={r === activeRole}
+              disabled={switching !== null}
               onClick={() => {
-                setActiveRole(r)
                 setOpen(false)
-                toast({
-                  title: `Acting as ${ROLE_LABEL[r]}`,
-                  detail: 'Screens refreshed for the new role.',
-                  tone: 'success',
-                })
+                // AuthProvider reports the outcome: switched, or refused by the identity provider.
+                void setActiveRole(r)
               }}
               className={cn(
-                'flex w-full items-start gap-2.5 rounded-md px-2.5 py-1.5 text-left transition-colors hover:bg-white/[0.04]',
+                'flex w-full items-start gap-2.5 rounded-md px-2.5 py-1.5 text-left transition-colors hover:bg-white/[0.04] disabled:opacity-50',
                 r === activeRole && 'bg-cyan/[0.07]',
               )}
             >

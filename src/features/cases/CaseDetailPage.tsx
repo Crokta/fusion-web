@@ -15,7 +15,7 @@ import {
   type LucideIcon,
 } from 'lucide-react'
 import { ApiError, describeError } from '@/api'
-import { useCase, useCaseAction, useSubmitCase } from '@/api/queries'
+import { useCase, useCaseAction, useCaseMedia, useSubmitCase } from '@/api/queries'
 import type { CaseDetail, EvidenceItem, TimelineEntry } from '@/api/types'
 import { StateStepper } from '@/components/StateStepper'
 import { useToast } from '@/components/Toaster'
@@ -43,7 +43,9 @@ import {
   SummaryPanel,
   useAssessmentAccess,
 } from './Assessment'
+import { shortId } from '@/api/adapters'
 import { EvidenceList } from './EvidenceList'
+import { ScreeningBadge } from './MediaViewer'
 import { CaseBriefsPanel } from '@/features/briefs/CaseBriefsPanel'
 
 const timelineIcon: Record<TimelineEntry['kind'], { icon: LucideIcon; cls: string }> = {
@@ -144,7 +146,7 @@ function CaseView({ c }: { c: CaseDetail }) {
           <SummaryPanel c={c} />
           <FindingsPanel c={c} />
           <StatementsPanel c={c} />
-          <EvidencePanel evidence={c.evidence} />
+          <EvidencePanel caseId={c.id} evidence={c.evidence} />
           <ClaimsPanel c={c} />
         </div>
 
@@ -153,10 +155,9 @@ function CaseView({ c }: { c: CaseDetail }) {
           <ChecklistPanel c={c} />
 
           <Panel title="Indicators" icon={Brain} eyebrow="Model outputs" bodyClassName="p-0">
+            <MediaScreeningSummary caseId={c.id} />
             {c.indicators.length === 0 ? (
-              <p className="px-4 py-5 text-[12px] text-ink-faint">
-                No analysis jobs have reported for this case.
-              </p>
+              <MediaScreeningEmpty caseId={c.id} />
             ) : (
               <ul className="divide-y divide-line-soft">
                 {c.indicators.map((ind) => (
@@ -228,7 +229,38 @@ function CaseView({ c }: { c: CaseDetail }) {
   )
 }
 
-function EvidencePanel({ evidence }: { evidence: EvidenceItem[] }) {
+/** Media screening of the case's images and video, in one line each: the detail is in the viewer. */
+function MediaScreeningSummary({ caseId }: { caseId: string }) {
+  const media = useCaseMedia(caseId)
+  const rows = media.data ?? []
+  if (rows.length === 0) return null
+  return (
+    <ul className="divide-y divide-line-soft border-b border-line-soft">
+      {rows.map((m) => (
+        <li key={m.jobId} className="flex items-center gap-2 px-4 py-3 text-[12.5px]">
+          <span className="font-medium text-ink">Media screening</span>
+          <span className="font-mono text-[10.5px] text-ink-faint">EV-{shortId(m.evidenceId)}</span>
+          <span className="ml-auto">
+            <ScreeningBadge screening={m} />
+          </span>
+        </li>
+      ))}
+    </ul>
+  )
+}
+
+function MediaScreeningEmpty({ caseId }: { caseId: string }) {
+  const media = useCaseMedia(caseId)
+  if ((media.data ?? []).length > 0) return null
+  return (
+    <p className="px-4 py-5 text-[12px] text-ink-faint">
+      No analysis jobs have reported for this case.
+    </p>
+  )
+}
+
+function EvidencePanel({ caseId, evidence }: { caseId: string; evidence: EvidenceItem[] }) {
+  const media = useCaseMedia(caseId)
   return (
     <Panel
       title="Evidence"
@@ -243,7 +275,7 @@ function EvidencePanel({ evidence }: { evidence: EvidenceItem[] }) {
       {evidence.length === 0 ? (
         <EmptyState icon={FileSearch} title="No evidence attached yet" />
       ) : (
-        <EvidenceList evidence={evidence} />
+        <EvidenceList evidence={evidence} screenings={media.data} />
       )}
     </Panel>
   )

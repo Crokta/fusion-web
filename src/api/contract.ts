@@ -23,8 +23,16 @@ import type {
   PolicyRecord,
   ReviewDecision,
   ReviewItem,
+  MediaAnalysis,
+  MediaScreening,
+  ProviderBudget,
+  ProviderReport,
+  ProviderTerms,
+  ProviderTermsInput,
   SearchKind,
   SearchResponse,
+  SourceApproveResult,
+  SourceImportResult,
   SourceInput,
   SourceRecord,
   SourceStatus,
@@ -37,6 +45,7 @@ import type {
   WallPublication,
   WallState,
   WatchFloorSummary,
+  WorkingCopy,
 } from './types'
 
 /**
@@ -66,6 +75,18 @@ export interface FusionApi {
   onDutyNow(): Promise<OnDuty[]>
   addShift(input: ShiftInput): Promise<DutyShift>
   removeShift(id: string): Promise<void>
+
+  // Media: casework's screenings, media's analysis, evidence's working copy (audited).
+  caseMedia(caseId: string): Promise<MediaScreening[]>
+  /** null when media holds no job for it yet. */
+  mediaAnalysis(evidenceId: string): Promise<MediaAnalysis | null>
+  workingCopy(evidenceId: string): Promise<WorkingCopy>
+
+  // The Bright Data screen (collector, ADR 0007).
+  provider(): Promise<ProviderReport>
+  setProviderBudget(monthlyCreditCap: number | null): Promise<ProviderBudget>
+  setProviderTerms(sourceId: string, input: ProviderTermsInput): Promise<ProviderTerms>
+  clearProviderHost(host: string): Promise<void>
   /** Directory search for the roster's person picker (roster.manage). */
   searchPeople(q: string): Promise<PersonContact[]>
 
@@ -74,6 +95,9 @@ export interface FusionApi {
   /** A new address or kind sends the source back for someone else's approval. */
   editSource(id: string, input: SourceInput, etag: string): Promise<SourceRecord>
   approveSource(id: string, etag: string): Promise<SourceRecord>
+  importSources(sources: SourceInput[]): Promise<SourceImportResult>
+  /** `version` is the number in the source's ETag. */
+  approveSources(items: { id: string; version: number }[]): Promise<SourceApproveResult>
   suspendSource(id: string, reason: string, etag: string): Promise<SourceRecord>
   reinstateSource(id: string, etag: string): Promise<SourceRecord>
 

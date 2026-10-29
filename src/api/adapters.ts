@@ -150,7 +150,7 @@ export interface StatementDto {
 export interface EvidenceDto {
   id: string
   caseId: string | null
-  /** warc | screenshot | html | media for captures; null for uploads. */
+  /** warc | screenshot | html | media | image | record for captures; null for uploads. */
   role?: string | null
   timestampGenTime?: string | null
   sourceUrl: string | null
@@ -449,7 +449,9 @@ const EVIDENCE_ROLE_LABEL: Record<string, string> = {
   warc: 'Web archive (WARC)',
   html: 'Page HTML',
   screenshot: 'Full-page screenshot',
-  media: 'Public video',
+  media: 'Video',
+  image: 'Image',
+  record: 'Post record (provider)',
 }
 
 export function evidenceLabel(e: Pick<EvidenceDto, 'role' | 'contentType'>): string {

@@ -152,6 +152,8 @@ const CRAWL_ERRORS: Record<string, string> = {
   provider_refused:
     'The provider refused the request: check the account’s key, credit and permissions.',
   provider_error: 'The provider’s job failed. It is tried again on the next round.',
+  provider_budget_exhausted:
+    'The monthly Bright Data cap is spent. Raise it on the Bright Data screen, or collection resumes on the 1st.',
   rate_limited: 'Too many requests. It is tried again on the next round.',
   robots_disallowed: 'The site’s robots.txt does not allow collection.',
   timeout: 'The site did not answer in time.',

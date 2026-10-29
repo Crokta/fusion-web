@@ -24,6 +24,7 @@ import {
   toBrief,
   toSearchHit,
   toSupportCheck,
+  toEvidenceItem,
   toSourceRecord,
   toStoryGroups,
   toTriageItem,
@@ -697,5 +698,27 @@ describe('alert delivery', () => {
       fallbackFor: 'm1',
     })
     expect(email).toMatchObject({ channel: 'email', fallbackFor: 'm1', lastError: undefined })
+  })
+})
+
+describe('captured images, video and post records', () => {
+  const base = {
+    id: '01a18400-0000-7000-8000-000000000001',
+    caseId: null,
+    sourceUrl: 'https://x.com/outlet/status/1',
+    sizeBytes: 1,
+    sha256: 'a'.repeat(64),
+    status: 'active',
+    registeredAt: '2026-10-28T20:00:00Z',
+    registeredBy: 'collector',
+  }
+
+  it('says what each file is and lets images and video be viewed', () => {
+    const photo = toEvidenceItem({ ...base, role: 'image', contentType: 'image/jpeg' })
+    const video = toEvidenceItem({ ...base, role: 'media', contentType: 'video/mp4' })
+    const record = toEvidenceItem({ ...base, role: 'record', contentType: 'application/json' })
+    expect([photo.label, photo.kind]).toEqual(['Image', 'image'])
+    expect([video.label, video.kind]).toEqual(['Video', 'video'])
+    expect([record.label, record.kind]).toEqual(['Post record (provider)', 'document'])
   })
 })

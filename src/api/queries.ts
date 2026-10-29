@@ -11,6 +11,7 @@ import type {
   PromoteInput,
   ReviewDecision,
   SearchKind,
+  ProviderTermsInput,
   ShiftInput,
   SourceInput,
   SourceStatus,
@@ -34,6 +35,9 @@ export const qk = {
   notifications: ['notifications'] as const,
   roster: ['roster'] as const,
   onDuty: ['roster', 'now'] as const,
+  provider: ['provider'] as const,
+  caseMedia: (caseId: string) => ['case', caseId, 'media'] as const,
+  mediaAnalysis: (evidenceId: string) => ['media', evidenceId] as const,
   briefs: (caseId?: string) => ['briefs', caseId ?? 'all'] as const,
   brief: (id: string) => ['brief', id] as const,
   supportCheck: (id: string) => ['brief', id, 'support-check'] as const,
@@ -105,6 +109,47 @@ export function useRemoveShift() {
   return useMutation({
     mutationFn: (id: string) => api.removeShift(id),
     onSuccess: () => qc.invalidateQueries({ queryKey: qk.roster }),
+  })
+}
+
+// Screening runs after the original lands: poll while any is still waiting.
+export const useCaseMedia = (caseId: string) =>
+  useQuery({
+    queryKey: qk.caseMedia(caseId),
+    queryFn: () => api.caseMedia(caseId),
+    refetchInterval: (q) => (q.state.data?.some((m) => m.status === 'requested') ? 10_000 : false),
+  })
+
+export const useMediaAnalysis = (evidenceId: string, enabled = true) =>
+  useQuery({
+    queryKey: qk.mediaAnalysis(evidenceId),
+    queryFn: () => api.mediaAnalysis(evidenceId),
+    enabled,
+    refetchInterval: (q) => (q.state.data?.job.status === 'running' ? 5_000 : false),
+  })
+
+/** A working copy is a read of the original: audited and a custody event, so only on request. */
+export function useWorkingCopy() {
+  return useMutation({ mutationFn: (evidenceId: string) => api.workingCopy(evidenceId) })
+}
+
+export const useProvider = () =>
+  useQuery({ queryKey: qk.provider, queryFn: () => api.provider(), refetchInterval: 60_000 })
+
+export type ProviderAction =
+  | { kind: 'budget'; monthlyCreditCap: number | null }
+  | { kind: 'terms'; sourceId: string; input: ProviderTermsInput }
+  | { kind: 'clear-host'; host: string }
+
+export function useProviderAction() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (a: ProviderAction): Promise<void> => {
+      if (a.kind === 'budget') await api.setProviderBudget(a.monthlyCreditCap)
+      else if (a.kind === 'terms') await api.setProviderTerms(a.sourceId, a.input)
+      else await api.clearProviderHost(a.host)
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: qk.provider }),
   })
 }
 
@@ -224,6 +269,26 @@ export function useSourceAction() {
       qc.invalidateQueries({ queryKey: ['audit'] })
     },
   })
+}
+
+/** Many sources at once: an import (proposals) or approving many. */
+export function useSourceBatch() {
+  const qc = useQueryClient()
+  const settle = () => {
+    qc.invalidateQueries({ queryKey: ['sources'] })
+    qc.invalidateQueries({ queryKey: qk.watchFloor })
+    qc.invalidateQueries({ queryKey: ['audit'] })
+  }
+  return {
+    importing: useMutation({
+      mutationFn: (s: SourceInput[]) => api.importSources(s),
+      onSettled: settle,
+    }),
+    approving: useMutation({
+      mutationFn: (items: { id: string; version: number }[]) => api.approveSources(items),
+      onSettled: settle,
+    }),
+  }
 }
 
 // Preservation lands a few seconds after an item arrives, so the queue polls while it is open.
