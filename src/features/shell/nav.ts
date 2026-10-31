@@ -9,6 +9,7 @@ import {
   ListChecks,
   LayoutDashboard,
   MapPin,
+  Map as MapIcon,
   MonitorPlay,
   Newspaper,
   Radio,
@@ -82,12 +83,11 @@ export const NAV: NavGroup[] = [
           'Personal channels built from your requirements, names of interest and watched cases.',
       },
       {
-        to: '/analytics',
-        label: 'Analytics',
+        to: '/outcomes',
+        label: 'Outcomes',
         icon: BarChart3,
-        soon: true,
         description:
-          'Outcome dashboard: time to acknowledge, time to release, feedback and corrections.',
+          'Outcome dashboard: time to release, corrections, lessons and time to acknowledge.',
       },
     ],
   },
@@ -111,12 +111,18 @@ export const NAV: NavGroup[] = [
           'Link analysis of suggested and confirmed relationships, with provenance on every edge.',
       },
       {
+        to: '/map',
+        label: 'Map',
+        icon: MapIcon,
+        description:
+          'Cases and stories where they happened, as layers, confirmed or estimated, and counts by state.',
+      },
+      {
         to: '/gazetteer',
         label: 'Gazetteer',
         icon: MapPin,
-        soon: true,
         description:
-          'Place names, aliases and boundaries for Nigeria and the region, with PostGIS layers.',
+          'Place names and other spellings for Nigeria and the region (GeoNames), used to place cases and stories.',
       },
       {
         to: '/names',

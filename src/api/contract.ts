@@ -1,4 +1,14 @@
 import type {
+  AttachLocationInput,
+  GazetteerDataset,
+  GeoLocation,
+  LocationSubject,
+  MapArea,
+  MapFeature,
+  MapLayer,
+  MapQuery,
+  Place,
+  PlaceKind,
   Alert,
   NameCluster,
   NameMention,
@@ -8,6 +18,7 @@ import type {
   MissionTemplate,
   MissionTemplateInput,
   Brief,
+  BriefRecipient,
   BriefSentence,
   CaptureRequest,
   CaseMatrix,
@@ -15,6 +26,8 @@ import type {
   CctvRequestInput,
   CctvRequestStatus,
   LawfulBasisOption,
+  Lesson,
+  LessonInput,
   SupportCheck,
   Approval,
   AuditEvent,
@@ -25,6 +38,8 @@ import type {
   Delivery,
   DutyShift,
   OnDuty,
+  OutcomePeriod,
+  Outcomes,
   PersonContact,
   ShiftInput,
   FindingInput,
@@ -171,6 +186,21 @@ export interface FusionApi {
   releaseBrief(id: string, etag: string): Promise<Brief>
   /** The PDF: the stored file once released, else a DRAFT-marked preview. */
   briefPdf(id: string, version?: number): Promise<Blob>
+  /** Opens a correction of a released brief: the next version, with its reason (E38). */
+  correctBrief(id: string, reason: string, etag: string): Promise<Brief>
+  /** Who holds the brief: the people a released correction notifies. */
+  briefDistribution(id: string): Promise<BriefRecipient[]>
+
+  // Lessons (casework, E38): recorded against closed cases, applied to mission templates.
+  /** Closes a released case (case.close); lessons are recorded after this. */
+  closeCase(id: string, etag: string): Promise<CaseDetail>
+  lessons(params?: { caseId?: string; templateKey?: string }): Promise<Lesson[]>
+  recordLesson(caseId: string, input: LessonInput): Promise<Lesson>
+  reviseLesson(id: string, input: LessonInput, etag: string): Promise<Lesson>
+  applyLesson(id: string, templateKey: string, etag: string): Promise<Lesson>
+
+  /** The outcome dashboard (reporting, outcomes.read). */
+  outcomes(period: OutcomePeriod): Promise<Outcomes>
 
   reviews(): Promise<Page<ReviewItem>>
   decideReview(caseId: string, decision: ReviewDecision, comment: string): Promise<void>
@@ -240,4 +270,19 @@ export interface FusionApi {
   /** The newest snapshot, or null when none has been taken. */
   nameReportData(id: string): Promise<NameReportData | null>
   takeNameReportData(id: string): Promise<NameReportData>
+
+  // Geo (E32, ADR 0018): the gazetteer, locations on cases and stories, and the map's layers.
+  // Reading is feed.read, case.read or search.run, narrowed by layer to what the role reads at the
+  // owner; placing is case.write for a case and triage.work for a story.
+  places(q: string, params?: { kind?: PlaceKind; country?: string }): Promise<Place[]>
+  place(id: string): Promise<Place>
+  nearestPlace(lat: number, lon: number): Promise<Place | null>
+  gazetteerDatasets(): Promise<GazetteerDataset[]>
+  locations(subjectType: LocationSubject, subjectId: string): Promise<GeoLocation[]>
+  attachLocation(input: AttachLocationInput): Promise<GeoLocation>
+  confirmLocation(id: string, version: number): Promise<GeoLocation>
+  removeLocation(id: string, version: number): Promise<GeoLocation>
+  mapLayers(): Promise<MapLayer[]>
+  mapFeatures(query: MapQuery): Promise<{ features: MapFeature[]; truncated: boolean }>
+  mapAreas(query: Omit<MapQuery, 'bbox'>): Promise<MapArea[]>
 }

@@ -1,4 +1,13 @@
 import {
+  type GazetteerDatasetDto,
+  type GeoLocationDto,
+  type MapAreaDto,
+  type MapFeatureCollectionDto,
+  type MapLayerDto,
+  type PlaceDto,
+  toGeoLocation,
+  toMapFeatures,
+  toPlace,
   type NameClusterDto,
   type NameMentionDto,
   type NameReportDataDto,
@@ -24,6 +33,9 @@ import {
   type NameOf,
   type PageDto,
   type ProductDto,
+  type LessonDto,
+  type OutcomesDto,
+  type RecipientDto,
   type SupportCheckDto,
   type PolicyDto,
   type SearchHitDto,
@@ -44,6 +56,10 @@ import {
   toShift,
   toApproval,
   toBrief,
+  toLesson,
+  toOutcomes,
+  toRecipient,
+  fromLessonInput,
   toCaptureRequest,
   toCaseMatrix,
   toCctvRequest,
@@ -272,6 +288,11 @@ const briefPeople = (b: ProductDto) => [
 async function briefCall(path: string, opts?: RequestOptions) {
   const b = await request<ProductDto>(path, opts)
   return toBrief(b, await nameOf(briefPeople(b)))
+}
+
+async function lessonCall(path: string, opts?: RequestOptions) {
+  const l = await request<LessonDto>(path, opts)
+  return toLesson(l, await nameOf([l.recordedBy, l.appliedBy]))
 }
 
 async function fetchCase(id: string) {
@@ -584,6 +605,46 @@ export const httpApi: FusionApi = {
     download(
       version ? `/products/${enc(id)}/versions/${version}/pdf` : `/products/${enc(id)}/preview.pdf`,
     ),
+  correctBrief: (id, reason, etag) =>
+    briefCall(`/products/${enc(id)}/corrections`, {
+      method: 'POST',
+      body: { reason },
+      ifMatch: etag,
+    }),
+  briefDistribution: async (id) => {
+    const page = await request<{ items: RecipientDto[] }>(`/products/${enc(id)}/distribution`)
+    const name = await nameOf(page.items.map((r) => r.recipientId))
+    return page.items.map((r) => toRecipient(r, name))
+  },
+
+  closeCase: async (id, etag) => {
+    await send(`/cases/${enc(id)}/close`, { method: 'POST', ifMatch: etag })
+    return httpApi.case(id)
+  },
+  lessons: async (p) => {
+    const page = await request<{ items: LessonDto[] }>('/lessons', {
+      query: { caseId: p?.caseId, templateKey: p?.templateKey },
+    })
+    const name = await nameOf(page.items.flatMap((l) => [l.recordedBy, l.appliedBy]))
+    return page.items.map((l) => toLesson(l, name))
+  },
+  recordLesson: (caseId, input) =>
+    lessonCall('/lessons', { method: 'POST', body: { caseId, ...fromLessonInput(input) } }),
+  reviseLesson: (id, input, etag) =>
+    lessonCall(`/lessons/${enc(id)}`, {
+      method: 'PUT',
+      body: fromLessonInput(input),
+      ifMatch: etag,
+    }),
+  applyLesson: (id, templateKey, etag) =>
+    lessonCall(`/lessons/${enc(id)}/apply`, {
+      method: 'POST',
+      body: { templateKey },
+      ifMatch: etag,
+    }),
+
+  outcomes: async (period) =>
+    toOutcomes(await request<OutcomesDto>('/outcomes', { query: { period } })),
 
   // A review is governance's CASE_REVIEW gate waiting on the caller's active role.
   reviews: async () => {
@@ -872,4 +933,68 @@ export const httpApi: FusionApi = {
     const r = await request<NameReportDataDto>(`/names/${enc(id)}/report-data`, { method: 'POST' })
     return toNameReportData(r, await nameOf([r.createdBy]))
   },
+
+  // Geo (E32, ADR 0018): search's gazetteer, locations and map layers.
+  places: async (q, p) =>
+    (
+      await request<PlaceDto[]>('/geo/gazetteer', {
+        query: { q, kind: p?.kind, country: p?.country, limit: '20' },
+      })
+    ).map(toPlace),
+  place: async (id) => toPlace(await request<PlaceDto>(`/geo/gazetteer/${enc(id)}`)),
+  nearestPlace: async (lat, lon) => {
+    try {
+      return toPlace(
+        await request<PlaceDto>('/geo/gazetteer/nearest', {
+          query: { lat: String(lat), lon: String(lon) },
+        }),
+      )
+    } catch (e) {
+      if (e instanceof ApiError && e.status === 404) return null
+      throw e
+    }
+  },
+  gazetteerDatasets: () => request<GazetteerDatasetDto[]>('/geo/gazetteer/datasets'),
+  locations: async (subjectType, subjectId) => {
+    const rows = await request<GeoLocationDto[]>('/geo/locations', {
+      query: { subjectType, subjectId },
+    })
+    const name = await nameOf(rows.flatMap((l) => [l.addedBy, l.confirmedBy]))
+    return rows.map((l) => toGeoLocation(l, name))
+  },
+  attachLocation: async (input) => {
+    const l = await request<GeoLocationDto>('/geo/locations', { method: 'POST', body: input })
+    return toGeoLocation(l, await nameOf([l.addedBy, l.confirmedBy]))
+  },
+  confirmLocation: async (id, version) => {
+    const l = await request<GeoLocationDto>(`/geo/locations/${enc(id)}/confirm`, {
+      method: 'POST',
+      ifMatch: `"v${version}"`,
+    })
+    return toGeoLocation(l, await nameOf([l.addedBy, l.confirmedBy]))
+  },
+  removeLocation: async (id, version) => {
+    const l = await request<GeoLocationDto>(`/geo/locations/${enc(id)}`, {
+      method: 'DELETE',
+      ifMatch: `"v${version}"`,
+    })
+    return toGeoLocation(l, await nameOf([l.addedBy, l.confirmedBy]))
+  },
+  mapLayers: () => request<MapLayerDto[]>('/geo/layers'),
+  mapFeatures: async (q) =>
+    toMapFeatures(
+      await request<MapFeatureCollectionDto>('/geo/events', {
+        query: {
+          bbox: q.bbox?.map((n) => n.toFixed(4)).join(','),
+          from: q.from,
+          to: q.to,
+          layers: q.layers?.join(','),
+          precision: q.precision,
+        },
+      }),
+    ),
+  mapAreas: (q) =>
+    request<MapAreaDto[]>('/geo/areas', {
+      query: { from: q.from, to: q.to, layers: q.layers?.join(','), precision: q.precision },
+    }),
 }

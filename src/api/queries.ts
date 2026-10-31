@@ -2,11 +2,17 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from './index'
 import type {
   Alert,
+  AttachLocationInput,
+  LocationSubject,
+  MapQuery,
+  PlaceKind,
   NameSearchInput,
   CctvRequestInput,
   CctvRequestStatus,
   UploadProgress,
   BriefSentence,
+  LessonInput,
+  OutcomePeriod,
   CaseState,
   ClaimOutcomeInput,
   FindingInput,
@@ -54,6 +60,10 @@ export const qk = {
   briefs: (caseId?: string) => ['briefs', caseId ?? 'all'] as const,
   brief: (id: string) => ['brief', id] as const,
   supportCheck: (id: string) => ['brief', id, 'support-check'] as const,
+  briefDistribution: (id: string) => ['brief', id, 'distribution'] as const,
+  lessons: (p?: { caseId?: string; templateKey?: string }) =>
+    ['lessons', p?.caseId ?? 'all', p?.templateKey ?? 'all'] as const,
+  outcomes: (period: OutcomePeriod) => ['outcomes', period] as const,
   sources: (status?: string) => ['sources', status ?? 'all'] as const,
   triage: (status?: string) => ['triage', status ?? 'all'] as const,
   cases: (state?: string, q?: string) => ['cases', state ?? 'all', q ?? ''] as const,
@@ -288,6 +298,7 @@ export function useCreateBrief() {
 export type BriefAction =
   | { kind: 'redraft'; title: string; sentences: BriefSentence[]; etag: string }
   | { kind: 'release'; etag: string }
+  | { kind: 'correct'; reason: string; etag: string }
 
 export function useBriefAction(id: string) {
   const qc = useQueryClient()
@@ -295,11 +306,15 @@ export function useBriefAction(id: string) {
     mutationFn: (a: BriefAction) =>
       a.kind === 'redraft'
         ? api.redraftBrief(id, { title: a.title, sentences: a.sentences }, a.etag)
-        : api.releaseBrief(id, a.etag),
+        : a.kind === 'correct'
+          ? api.correctBrief(id, a.reason, a.etag)
+          : api.releaseBrief(id, a.etag),
     onSuccess: (b) => {
       qc.setQueryData(qk.brief(id), b)
       qc.invalidateQueries({ queryKey: ['briefs'] })
       qc.invalidateQueries({ queryKey: qk.supportCheck(id) })
+      qc.invalidateQueries({ queryKey: qk.briefDistribution(id) })
+      qc.invalidateQueries({ queryKey: ['outcomes'] })
       // A release moves the case to Released once casework has the event.
       qc.invalidateQueries({ queryKey: qk.case(b.caseId) })
       qc.invalidateQueries({ queryKey: ['cases'] })
@@ -310,6 +325,55 @@ export function useBriefAction(id: string) {
     },
   })
 }
+
+// ---------------------------------------------------------------- E38: corrections, lessons, outcomes
+
+/** Who holds a brief: the people a released correction notifies. */
+export const useBriefDistribution = (id: string, enabled = true) =>
+  useQuery({
+    queryKey: qk.briefDistribution(id),
+    queryFn: () => api.briefDistribution(id),
+    enabled: !!id && enabled,
+  })
+
+export function useCloseCase(id: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (etag: string) => api.closeCase(id, etag),
+    onSuccess: (data) => {
+      qc.setQueryData(qk.case(id), data)
+      qc.invalidateQueries({ queryKey: ['cases'] })
+      qc.invalidateQueries({ queryKey: ['outcomes'] })
+    },
+  })
+}
+
+export const useLessons = (p?: { caseId?: string; templateKey?: string }, enabled = true) =>
+  useQuery({ queryKey: qk.lessons(p), queryFn: () => api.lessons(p), enabled })
+
+export type LessonAction =
+  | { kind: 'record'; caseId: string; input: LessonInput }
+  | { kind: 'revise'; id: string; input: LessonInput; etag: string }
+  | { kind: 'apply'; id: string; templateKey: string; etag: string }
+
+export function useLessonAction() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (a: LessonAction) =>
+      a.kind === 'record'
+        ? api.recordLesson(a.caseId, a.input)
+        : a.kind === 'revise'
+          ? api.reviseLesson(a.id, a.input, a.etag)
+          : api.applyLesson(a.id, a.templateKey, a.etag),
+    onSettled: () => {
+      qc.invalidateQueries({ queryKey: ['lessons'] })
+      qc.invalidateQueries({ queryKey: ['outcomes'] })
+    },
+  })
+}
+
+export const useOutcomes = (period: OutcomePeriod) =>
+  useQuery({ queryKey: qk.outcomes(period), queryFn: () => api.outcomes(period) })
 
 export const useSources = (status?: SourceStatus) =>
   useQuery({ queryKey: qk.sources(status), queryFn: () => api.sources({ status }) })
@@ -757,3 +821,75 @@ export function useTakeNameReportData(id: string) {
     onSuccess: (r) => qc.setQueryData(qk.nameReportData(id), r),
   })
 }
+
+// ---------------------------------------------------------------- geo (E32, ADR 0018)
+
+export const geoKeys = {
+  all: ['geo'] as const,
+  places: (q: string, kind?: PlaceKind) => ['geo', 'places', q, kind ?? 'any'] as const,
+  place: (id: string) => ['geo', 'place', id] as const,
+  datasets: ['geo', 'datasets'] as const,
+  locations: (subjectType: LocationSubject, subjectId: string) =>
+    ['geo', 'locations', subjectType, subjectId] as const,
+  layers: ['geo', 'layers'] as const,
+  features: (q: MapQuery) => ['geo', 'features', q] as const,
+  areas: (q: Omit<MapQuery, 'bbox'>) => ['geo', 'areas', q] as const,
+}
+
+export const usePlaces = (q: string, kind?: PlaceKind) =>
+  useQuery({
+    queryKey: geoKeys.places(q, kind),
+    queryFn: () => api.places(q, { kind }),
+    enabled: q.trim().length >= 2,
+    staleTime: 5 * 60_000,
+  })
+
+export const usePlace = (id: string | undefined) =>
+  useQuery({
+    queryKey: geoKeys.place(id ?? ''),
+    queryFn: () => api.place(id!),
+    enabled: !!id,
+    staleTime: 5 * 60_000,
+  })
+
+export const useGazetteerDatasets = () =>
+  useQuery({ queryKey: geoKeys.datasets, queryFn: api.gazetteerDatasets, staleTime: 60 * 60_000 })
+
+export const useLocations = (subjectType: LocationSubject, subjectId: string, enabled = true) =>
+  useQuery({
+    queryKey: geoKeys.locations(subjectType, subjectId),
+    queryFn: () => api.locations(subjectType, subjectId),
+    enabled,
+  })
+
+export const useMapLayers = (enabled = true) =>
+  useQuery({ queryKey: geoKeys.layers, queryFn: api.mapLayers, enabled })
+
+export const useMapFeatures = (q: MapQuery, enabled = true) =>
+  useQuery({
+    queryKey: geoKeys.features(q),
+    queryFn: () => api.mapFeatures(q),
+    enabled,
+    placeholderData: (previous) => previous,
+  })
+
+export const useMapAreas = (q: Omit<MapQuery, 'bbox'>, enabled = true) =>
+  useQuery({ queryKey: geoKeys.areas(q), queryFn: () => api.mapAreas(q), enabled })
+
+/** Placing, confirming and removing change the subject's list and every map view. */
+function useGeoMutation<V>(fn: (v: V) => Promise<unknown>) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: fn,
+    onSuccess: () => qc.invalidateQueries({ queryKey: geoKeys.all }),
+  })
+}
+
+export const useAttachLocation = () =>
+  useGeoMutation((input: AttachLocationInput) => api.attachLocation(input))
+
+export const useConfirmLocation = () =>
+  useGeoMutation((l: { id: string; version: number }) => api.confirmLocation(l.id, l.version))
+
+export const useRemoveLocation = () =>
+  useGeoMutation((l: { id: string; version: number }) => api.removeLocation(l.id, l.version))

@@ -400,6 +400,14 @@ export const can = {
   ackAlert: (r: Role) => r === 'analyst' || r === 'supervisor' || r === 'centre_lead',
   /** case.assign in permissions.yaml: keeping mission templates and choosing a case's mission (E29). */
   manageMissions: (r: Role) => r === 'supervisor' || r === 'centre_lead',
+  /** outcomes.read in permissions.yaml: the outcome dashboard (E38). */
+  readOutcomes: (r: Role) => r === 'supervisor' || r === 'centre_lead' || r === 'leadership',
+  /** case.close in permissions.yaml: closing a released case, after which lessons are recorded. */
+  closeCase: (r: Role) => r === 'supervisor' || r === 'centre_lead',
+  /** case.write in permissions.yaml: recording and rewording lessons on closed cases (E38). */
+  recordLesson: (r: Role) => r === 'analyst' || r === 'supervisor',
+  /** case.assign in permissions.yaml: marking a lesson applied to a mission template (E38). */
+  applyLesson: (r: Role) => r === 'supervisor' || r === 'centre_lead',
   /** case.read in permissions.yaml: the mission templates themselves. */
   readMissions: (r: Role) =>
     r === 'analyst' ||
@@ -417,4 +425,26 @@ export const can = {
   searchNames: (r: Role) => r === 'analyst' || r === 'supervisor',
   /** search.pi in permissions.yaml: a private individual's results, while pi_search is on (ADR 0013). */
   readPiResults: (r: Role) => r === 'centre_lead',
+  /** feed.read, case.read or search.run: the gazetteer and the map (E32, ADR 0018); layers narrow further. */
+  readMap: (r: Role) =>
+    r === 'analyst' ||
+    r === 'supervisor' ||
+    r === 'reviewer' ||
+    r === 'centre_lead' ||
+    r === 'evidence_officer' ||
+    r === 'leadership',
+  /** case.read in permissions.yaml: the map's cases layer and a case's locations. */
+  readCaseLocations: (r: Role) =>
+    r === 'analyst' ||
+    r === 'supervisor' ||
+    r === 'reviewer' ||
+    r === 'centre_lead' ||
+    r === 'evidence_officer',
+  /** feed.read in permissions.yaml: the map's stories layer and a story's locations. */
+  readStoryLocations: (r: Role) =>
+    r === 'analyst' ||
+    r === 'supervisor' ||
+    r === 'reviewer' ||
+    r === 'centre_lead' ||
+    r === 'leadership',
 }

@@ -373,7 +373,8 @@ export interface ClaimOutcomeInput {
 
 // ---------------------------------------------------------------- briefs
 
-export type BriefStatus = 'draft' | 'released'
+/** `correcting`: released, with a correction being drafted as the next version (ADR 0017). */
+export type BriefStatus = 'draft' | 'released' | 'correcting'
 
 /** One sentence and what it rests on: `finding:<id>`, `claim:<id>` or `evidence:<id>`. */
 export interface BriefSentence {
@@ -383,6 +384,8 @@ export interface BriefSentence {
 
 export interface BriefVersion {
   number: number
+  /** Who started the version: for a correction, whoever opened it (who may not release it). */
+  createdById?: string
   createdBy: string
   createdAt: string
   releasedBy?: string
@@ -390,6 +393,21 @@ export interface BriefVersion {
   /** SHA-256 of the released PDF: what ProductReleased carries. */
   sha256?: string
   hasPdf: boolean
+  /** The version this one corrects, and why (ADR 0017). */
+  correctsVersion?: number
+  correctionReason?: string
+  /** The correction that replaced this version; its PDF is still kept as it was. */
+  supersededBy?: number
+  supersededAt?: string
+}
+
+/** Someone who holds a released brief: the people a correction notifies (ADR 0017). */
+export interface BriefRecipient {
+  id: string
+  name: string
+  source: 'author' | 'releaser' | 'corrector' | 'download'
+  firstVersion: number
+  recordedAt: string
 }
 
 /** A brief (reporting's product): drafted from a case's approved findings, released by someone else. */
@@ -428,6 +446,71 @@ export interface SupportCheck {
     refs: { ref: string; resolves: boolean; label?: string }[]
   }[]
   citable: Citable[]
+}
+
+// ---------------------------------------------------------------- lessons (E38)
+
+/** A lesson from a closed case, for the mission template the case ran under (ADR 0017). */
+export interface Lesson {
+  id: string
+  caseId: string
+  caseRef: string
+  title: string
+  /** What happened. */
+  observation: string
+  /** What to do differently. */
+  recommendation: string
+  templateKey?: string
+  /** The template version that took the lesson in; unset while it is open. */
+  appliedVersion?: number
+  appliedBy?: string
+  appliedAt?: string
+  recordedById: string
+  recordedBy: string
+  recordedAt: string
+  updatedAt: string
+  etag: string
+}
+
+export interface LessonInput {
+  title: string
+  observation: string
+  recommendation: string
+  templateKey?: string
+}
+
+// ---------------------------------------------------------------- outcomes (E38)
+
+export type OutcomePeriod = '7d' | '30d' | '90d'
+
+export interface OutcomeDay {
+  date: string
+  released: number
+  corrections: number
+  casesClosed: number
+  lessons: number
+  alertsRaised: number
+}
+
+/** The outcome dashboard (outcomes.read). Times are in seconds; unset when nothing measured one. */
+export interface Outcomes {
+  period: OutcomePeriod
+  from: string
+  to: string
+  briefsReleased: number
+  corrections: number
+  /** Corrections per release in the period. */
+  correctionRate?: number
+  medianTimeToRelease?: number
+  medianTimeToCorrect?: number
+  casesClosed: number
+  lessonsRecorded: number
+  alertsRaised: number
+  alertsAcknowledged: number
+  medianTimeToAcknowledge?: number
+  /** Unset until recipient feedback is recorded (E37). */
+  feedbackRecorded?: number
+  daily: OutcomeDay[]
 }
 
 // ---------------------------------------------------------------- sources
@@ -595,6 +678,8 @@ export type SearchKind = 'person' | 'location' | 'news' | 'social' | 'media' | '
 
 export interface SearchHit {
   id: string
+  /** search's own record type (story, product, case, finding…); kind groups several. Not set by the mock. */
+  recordType?: string
   kind: SearchKind
   title: string
   summary: string
@@ -1152,4 +1237,123 @@ export interface NameReportData {
   breakdowns: Record<string, NameBucket[]>
   caseIds: string[]
   clusters: { id: string; status: NameClusterStatus; terms: string[]; mentionCount: number }[]
+}
+
+// ---------------------------------------------------------------- geo (E32, ADR 0018)
+
+export type PlaceKind = 'country' | 'admin1' | 'admin2' | 'place' | 'feature'
+
+/** A gazetteer entry: GeoNames (CC BY 4.0). In Nigeria admin1 is a state (or the FCT), admin2 an LGA. */
+export interface Place {
+  id: string
+  name: string
+  kind: PlaceKind
+  featureCode: string
+  country: string
+  admin1Id?: string
+  admin1Name?: string
+  admin2Id?: string
+  admin2Name?: string
+  lat: number
+  lon: number
+  population: number
+  aliases: string[]
+}
+
+/** Where a gazetteer edition came from, and the credit every screen showing it gives. */
+export interface GazetteerDataset {
+  key: string
+  source: string
+  licence: string
+  attribution: string
+  url: string
+  placeCount: number
+  loadedAt: string
+}
+
+export type LocationSubject = 'case' | 'story'
+/** Locations are always marked confirmed or estimated (search rules, Section 7.1). */
+export type LocationPrecision = 'confirmed' | 'estimated'
+/** Manual: an analyst placed it. Extracted: resolved from a place name language found (E20). */
+export type LocationOrigin = 'manual' | 'extracted'
+
+export interface GeoLocation {
+  id: string
+  subjectType: LocationSubject
+  subjectId: string
+  caseId?: string
+  subjectTitle: string
+  subjectAt: string
+  placeId?: string
+  admin1Id?: string
+  label: string
+  lat: number
+  lon: number
+  precision: LocationPrecision
+  origin: LocationOrigin
+  note?: string
+  addedBy: string
+  addedAt: string
+  confirmedBy?: string
+  confirmedAt?: string
+  version: number
+}
+
+/** A gazetteer place, or a dropped pin with a name. */
+export interface AttachLocationInput {
+  subjectType: LocationSubject
+  subjectId: string
+  placeId?: string
+  label?: string
+  lat?: number
+  lon?: number
+  precision: LocationPrecision
+  note?: string
+}
+
+export type MapLayerKey = 'cases' | 'stories'
+
+export interface MapLayer {
+  key: MapLayerKey
+  label: string
+  subjectType: LocationSubject
+  confirmed: number
+  estimated: number
+}
+
+export interface MapFeature {
+  id: string
+  layer: MapLayerKey
+  subjectType: LocationSubject
+  subjectId: string
+  caseId?: string
+  title: string
+  label: string
+  placeId?: string
+  precision: LocationPrecision
+  origin: LocationOrigin
+  at: string
+  lat: number
+  lon: number
+}
+
+export interface MapQuery {
+  /** west,south,east,north */
+  bbox?: [number, number, number, number]
+  from?: string
+  to?: string
+  layers?: MapLayerKey[]
+  precision?: LocationPrecision
+}
+
+/** Live locations in one state, by layer: the map's "by place" view. */
+export interface MapArea {
+  placeId: string
+  name: string
+  country: string
+  lat: number
+  lon: number
+  cases: number
+  stories: number
+  estimated: number
 }

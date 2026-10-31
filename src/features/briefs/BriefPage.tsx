@@ -14,10 +14,11 @@ import {
   Trash2,
   UserX,
 } from 'lucide-react'
+import { useQueryClient } from '@tanstack/react-query'
 import { useEffect, useMemo, useState } from 'react'
 import { describeError } from '@/api'
 import { api } from '@/api'
-import { useBrief, useBriefAction, useCase, useSupportCheck } from '@/api/queries'
+import { qk, useBrief, useBriefAction, useCase, useSupportCheck } from '@/api/queries'
 import type { Brief, BriefSentence, Citable, SupportCheck } from '@/api/types'
 import { can, useAuth } from '@/auth/AuthProvider'
 import { useToast } from '@/components/Toaster'
@@ -33,6 +34,7 @@ import {
 } from '@/components/ui'
 import { cn } from '@/lib/cn'
 import { dateTime } from '@/lib/format'
+import { CorrectionPanel, VersionsPanel } from './CorrectionPanel'
 
 export function BriefPage({ briefId }: { briefId: string }) {
   const brief = useBrief(briefId)
@@ -80,13 +82,19 @@ function BriefEditor({ brief }: { brief: Brief }) {
   const check = useSupportCheck(brief.id)
   const theCase = useCase(brief.caseId)
   const act = useBriefAction(brief.id)
+  const qc = useQueryClient()
   const toast = useToast()
   const [title, setTitle] = useState(brief.title)
   const [sentences, setSentences] = useState<BriefSentence[]>(brief.sentences)
   const [opening, setOpening] = useState(false)
 
   const released = brief.status === 'released'
+  const correcting = brief.status === 'correcting'
   const isAuthor = brief.authorId === user?.id
+  // A correction is released by neither its author nor whoever opened it (ADR 0017).
+  const isCorrector =
+    correcting &&
+    brief.versions.find((v) => v.number === brief.currentVersion)?.createdById === user?.id
   const canEdit = !released && can.draftBrief(activeRole)
   const dirty =
     title !== brief.title || JSON.stringify(sentences) !== JSON.stringify(brief.sentences)
@@ -128,11 +136,19 @@ function BriefEditor({ brief }: { brief: Brief }) {
       { kind: 'release', etag: brief.etag },
       {
         onSuccess: () =>
-          toast({
-            title: 'Brief released',
-            detail: 'The PDF is sealed with its SHA-256; the case moves to Released.',
-            tone: 'success',
-          }),
+          toast(
+            correcting
+              ? {
+                  title: 'Correction released',
+                  detail: `Version ${brief.currentVersion} replaces version ${brief.currentVersion - 1}; everyone who holds the brief is told.`,
+                  tone: 'success',
+                }
+              : {
+                  title: 'Brief released',
+                  detail: 'The PDF is sealed with its SHA-256; the case moves to Released.',
+                  tone: 'success',
+                },
+          ),
         onError: (e) => toast({ title: 'Not released', detail: describeError(e), tone: 'error' }),
       },
     )
@@ -140,6 +156,8 @@ function BriefEditor({ brief }: { brief: Brief }) {
     setOpening(true)
     try {
       await openPdf(brief.id, version)
+      // Downloading a released version makes you one of its holders (ADR 0017).
+      if (version) void qc.invalidateQueries({ queryKey: qk.briefDistribution(brief.id) })
     } catch (e) {
       toast({ title: 'No PDF', detail: describeError(e), tone: 'error' })
     } finally {
@@ -162,7 +180,7 @@ function BriefEditor({ brief }: { brief: Brief }) {
         <div className="mb-2 flex flex-wrap items-center gap-2">
           <span className="eyebrow text-cyan/80">Brief · v{brief.currentVersion}</span>
           <Badge tone={released ? 'green' : 'amber'} dot>
-            {released ? 'Released' : 'Draft'}
+            {released ? 'Released' : correcting ? 'Correction in progress' : 'Draft'}
           </Badge>
           <span className="text-[11.5px] text-ink-faint">by {brief.authorName}</span>
         </div>
@@ -249,11 +267,13 @@ function BriefEditor({ brief }: { brief: Brief }) {
             check={check.data}
             checkError={check.error}
             dirty={dirty}
-            isAuthor={isAuthor}
+            isAuthor={isAuthor || isCorrector}
             mayRelease={can.releaseBrief(activeRole)}
             pending={act.isPending}
             onRelease={release}
           />
+
+          <CorrectionPanel brief={brief} mayCorrect={can.draftBrief(activeRole)} />
 
           <Panel title="PDF" icon={Download}>
             {released && current?.hasPdf ? (
@@ -302,6 +322,8 @@ function BriefEditor({ brief }: { brief: Brief }) {
               </>
             )}
           </Panel>
+
+          <VersionsPanel brief={brief} opening={opening} onOpen={(v) => pdf(v)} />
 
           {check.data && check.data.citable.length > 0 && (
             <Panel title="What the case offers" icon={ShieldCheck} bodyClassName="p-0">
@@ -477,6 +499,7 @@ function ReleasePanel({
   onRelease: () => void
 }) {
   const released = brief.status === 'released'
+  const correcting = brief.status === 'correcting'
   return (
     <Panel
       title={released ? 'Released' : 'Support check'}
@@ -517,8 +540,10 @@ function ReleasePanel({
           )}
           {isAuthor && mayRelease && (
             <p className="mb-3 flex gap-2 text-[12px] text-amber">
-              <UserX size={13} className="mt-0.5 shrink-0" aria-hidden /> You wrote this brief:
-              someone else releases it.
+              <UserX size={13} className="mt-0.5 shrink-0" aria-hidden />
+              {correcting
+                ? 'You wrote this brief or opened this correction: someone else releases it.'
+                : 'You wrote this brief: someone else releases it.'}
             </p>
           )}
           {mayRelease ? (
@@ -531,7 +556,7 @@ function ReleasePanel({
               loading={pending}
               onClick={onRelease}
             >
-              Release brief
+              {correcting ? `Release correction (v${brief.currentVersion})` : 'Release brief'}
             </Button>
           ) : (
             <p className="text-[11.5px] text-ink-faint">

@@ -18,6 +18,7 @@ import {
 } from '@/components/ui'
 import { cn } from '@/lib/cn'
 import { dateTime } from '@/lib/format'
+import { TemplateLessonsPanel } from '@/features/lessons/LessonsPanel'
 
 /** A line key from its label: what casework accepts (lower case, digits, underscores). */
 export const lineKey = (label: string, taken: string[]) => {
@@ -391,6 +392,7 @@ function TemplateEditor({
         </fieldset>
       </Panel>
       {template && template.versions.length > 0 && <VersionHistory template={template} />}
+      {template && <TemplateLessonsPanel template={template} />}
     </div>
   )
 }

@@ -24,6 +24,11 @@ import type {
   MatrixFlag,
   ApprovalStep,
   Brief,
+  BriefRecipient,
+  Lesson,
+  LessonInput,
+  OutcomeDay,
+  Outcomes,
   SupportCheck,
   ApprovalType,
   AuditEvent,
@@ -70,6 +75,12 @@ import type {
   WallScreen,
   WallState,
   WatchFloorSummary,
+  GazetteerDataset,
+  GeoLocation,
+  MapArea,
+  MapFeature,
+  MapLayer,
+  Place,
 } from './types'
 
 /** How a person is shown: their name if the directory knows them, else a short id. */
@@ -1011,6 +1022,10 @@ export interface ProductDto {
     sha256: string | null
     contentSha256?: string | null
     hasPdf?: boolean
+    correctsVersion?: number | null
+    correctionReason?: string | null
+    supersededBy?: number | null
+    supersededAt?: string | null
   }[]
   createdAt: string
   updatedAt: string
@@ -1034,23 +1049,47 @@ export function toBrief(p: ProductDto, name: NameOf): Brief {
     title: p.title,
     authorId: p.authorId,
     authorName: name(p.authorId),
-    status: p.status === 'released' ? 'released' : 'draft',
+    status: p.status === 'released' || p.status === 'correcting' ? p.status : 'draft',
     currentVersion: p.currentVersion,
     sentences: [...p.sentences]
       .sort((a, b) => a.order - b.order)
       .map((s) => ({ text: s.text, supportRefs: s.supportRefs })),
     versions: p.versions.map((v) => ({
       number: v.number,
+      createdById: v.createdBy,
       createdBy: name(v.createdBy),
       createdAt: v.createdAt,
       releasedBy: v.releasedBy ? name(v.releasedBy) : undefined,
       releasedAt: v.releasedAt ?? undefined,
       sha256: v.sha256 ?? undefined,
       hasPdf: !!v.hasPdf,
+      correctsVersion: v.correctsVersion ?? undefined,
+      correctionReason: v.correctionReason ?? undefined,
+      supersededBy: v.supersededBy ?? undefined,
+      supersededAt: v.supersededAt ?? undefined,
     })),
     createdAt: p.createdAt,
     updatedAt: p.updatedAt,
     etag: `"v${p.version}"`,
+  }
+}
+
+export interface RecipientDto {
+  recipientId: string
+  source: string
+  firstVersion: number
+  recordedAt: string
+}
+
+const RECIPIENT_SOURCES = ['author', 'releaser', 'corrector', 'download'] as const
+
+export function toRecipient(r: RecipientDto, name: NameOf): BriefRecipient {
+  return {
+    id: r.recipientId,
+    name: name(r.recipientId),
+    source: RECIPIENT_SOURCES.find((s) => s === r.source) ?? 'download',
+    firstVersion: r.firstVersion,
+    recordedAt: r.recordedAt,
   }
 }
 
@@ -1198,6 +1237,7 @@ const MARK = /<\/?mark>/g
 export function toSearchHit(h: SearchHitDto): SearchHit {
   return {
     id: h.id,
+    recordType: h.type,
     kind: KIND_OF[h.type] ?? 'news',
     title: h.title,
     summary: h.snippet?.replace(MARK, '') ?? '',
@@ -1610,3 +1650,235 @@ export function toNameReportData(d: NameReportDataDto, name: NameOf): NameReport
     clusters: a.clusters.map((c) => ({ ...c, status: clusterStatus(c.status) })),
   }
 }
+
+// ---------------------------------------------------------------------------------------
+// Lessons and outcomes (E38)
+// ---------------------------------------------------------------------------------------
+
+export interface LessonDto {
+  id: string
+  caseId: string
+  caseReference: string
+  title: string
+  observation: string
+  recommendation: string
+  templateKey: string | null
+  appliedTemplateVersion: number | null
+  appliedBy: string | null
+  appliedAt: string | null
+  recordedBy: string
+  recordedAt: string
+  updatedBy: string
+  updatedAt: string
+  version: number
+}
+
+export function toLesson(l: LessonDto, name: NameOf): Lesson {
+  return {
+    id: l.id,
+    caseId: l.caseId,
+    caseRef: l.caseReference,
+    title: l.title,
+    observation: l.observation,
+    recommendation: l.recommendation,
+    templateKey: l.templateKey ?? undefined,
+    appliedVersion: l.appliedTemplateVersion ?? undefined,
+    appliedBy: l.appliedBy ? name(l.appliedBy) : undefined,
+    appliedAt: l.appliedAt ?? undefined,
+    recordedById: l.recordedBy,
+    recordedBy: name(l.recordedBy),
+    recordedAt: l.recordedAt,
+    updatedAt: l.updatedAt,
+    etag: `"v${l.version}"`,
+  }
+}
+
+/** Blank template keys are left out, so casework falls back to the case's own template. */
+export function fromLessonInput(i: LessonInput) {
+  return {
+    title: i.title.trim(),
+    observation: i.observation.trim(),
+    recommendation: i.recommendation.trim(),
+    templateKey: i.templateKey?.trim() || null,
+  }
+}
+
+export interface OutcomesDto {
+  period: string
+  from: string
+  to: string
+  briefsReleased: number
+  corrections: number
+  correctionRate: number | null
+  medianTimeToReleaseSeconds: number | null
+  medianTimeToCorrectSeconds: number | null
+  casesClosed: number
+  lessonsRecorded: number
+  alertsRaised: number
+  alertsAcknowledged: number
+  medianTimeToAcknowledgeSeconds: number | null
+  feedbackRecorded: number | null
+  daily: OutcomeDay[]
+}
+
+const PERIODS = ['7d', '30d', '90d'] as const
+
+export function toOutcomes(o: OutcomesDto): Outcomes {
+  return {
+    period: PERIODS.find((p) => p === o.period) ?? '30d',
+    from: o.from,
+    to: o.to,
+    briefsReleased: o.briefsReleased,
+    corrections: o.corrections,
+    correctionRate: o.correctionRate ?? undefined,
+    medianTimeToRelease: o.medianTimeToReleaseSeconds ?? undefined,
+    medianTimeToCorrect: o.medianTimeToCorrectSeconds ?? undefined,
+    casesClosed: o.casesClosed,
+    lessonsRecorded: o.lessonsRecorded,
+    alertsRaised: o.alertsRaised,
+    alertsAcknowledged: o.alertsAcknowledged,
+    medianTimeToAcknowledge: o.medianTimeToAcknowledgeSeconds ?? undefined,
+    feedbackRecorded: o.feedbackRecorded ?? undefined,
+    daily: o.daily,
+  }
+}
+
+// ---------------------------------------------------------------- geo (E32, ADR 0018)
+
+export interface PlaceDto {
+  id: string
+  name: string
+  kind: Place['kind']
+  featureCode: string
+  country: string
+  admin1Id: string | null
+  admin1Name: string | null
+  admin2Id: string | null
+  admin2Name: string | null
+  lat: number
+  lon: number
+  population: number
+  aliases: string[]
+}
+
+export function toPlace(p: PlaceDto): Place {
+  return {
+    id: p.id,
+    name: p.name,
+    kind: p.kind,
+    featureCode: p.featureCode,
+    country: p.country,
+    admin1Id: p.admin1Id ?? undefined,
+    admin1Name: p.admin1Name ?? undefined,
+    admin2Id: p.admin2Id ?? undefined,
+    admin2Name: p.admin2Name ?? undefined,
+    lat: p.lat,
+    lon: p.lon,
+    population: p.population,
+    aliases: p.aliases ?? [],
+  }
+}
+
+export type GazetteerDatasetDto = GazetteerDataset
+
+export interface GeoLocationDto {
+  id: string
+  subjectType: GeoLocation['subjectType']
+  subjectId: string
+  caseId: string | null
+  subjectTitle: string
+  subjectAt: string
+  placeId: string | null
+  admin1Id: string | null
+  label: string
+  lat: number
+  lon: number
+  precision: GeoLocation['precision']
+  origin: GeoLocation['origin']
+  note: string | null
+  addedBy: string
+  addedAt: string
+  confirmedBy: string | null
+  confirmedAt: string | null
+  removed: boolean
+  version: number
+}
+
+/** `name` turns the account ids in addedBy / confirmedBy into people's names. */
+export function toGeoLocation(
+  l: GeoLocationDto,
+  name: (id?: string | null) => string,
+): GeoLocation {
+  return {
+    id: l.id,
+    subjectType: l.subjectType,
+    subjectId: l.subjectId,
+    caseId: l.caseId ?? undefined,
+    subjectTitle: l.subjectTitle,
+    subjectAt: l.subjectAt,
+    placeId: l.placeId ?? undefined,
+    admin1Id: l.admin1Id ?? undefined,
+    label: l.label,
+    lat: l.lat,
+    lon: l.lon,
+    precision: l.precision,
+    origin: l.origin,
+    note: l.note ?? undefined,
+    addedBy: l.origin === 'extracted' ? 'Place extraction' : name(l.addedBy),
+    addedAt: l.addedAt,
+    confirmedBy: l.confirmedBy ? name(l.confirmedBy) : undefined,
+    confirmedAt: l.confirmedAt ?? undefined,
+    version: l.version,
+  }
+}
+
+export type MapLayerDto = MapLayer
+
+/** GeoJSON as search returns it (RFC 7946). */
+export interface MapFeatureCollectionDto {
+  type: 'FeatureCollection'
+  truncated: boolean
+  features: {
+    type: 'Feature'
+    id: string
+    geometry: { type: 'Point'; coordinates: [number, number] }
+    properties: {
+      layer: MapFeature['layer']
+      subjectType: MapFeature['subjectType']
+      subjectId: string
+      caseId: string | null
+      title: string
+      label: string
+      placeId: string | null
+      precision: MapFeature['precision']
+      origin: MapFeature['origin']
+      at: string
+    }
+  }[]
+}
+
+export function toMapFeatures(c: MapFeatureCollectionDto): {
+  features: MapFeature[]
+  truncated: boolean
+} {
+  return {
+    truncated: c.truncated,
+    features: c.features.map((f) => ({
+      id: f.id,
+      layer: f.properties.layer,
+      subjectType: f.properties.subjectType,
+      subjectId: f.properties.subjectId,
+      caseId: f.properties.caseId ?? undefined,
+      title: f.properties.title,
+      label: f.properties.label,
+      placeId: f.properties.placeId ?? undefined,
+      precision: f.properties.precision,
+      origin: f.properties.origin,
+      at: f.properties.at,
+      lon: f.geometry.coordinates[0],
+      lat: f.geometry.coordinates[1],
+    })),
+  }
+}
+
+export type MapAreaDto = MapArea

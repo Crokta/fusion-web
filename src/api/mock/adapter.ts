@@ -7,6 +7,11 @@ import type {
   MissionTemplateInput,
   Alert,
   Brief,
+  BriefRecipient,
+  Lesson,
+  LessonInput,
+  OutcomePeriod,
+  Outcomes,
   CaptureRequest,
   CaseMatrix,
   CctvRequest,
@@ -36,6 +41,7 @@ import type {
 } from '../types'
 import * as fx from './fixtures'
 import { nameMocks } from './names'
+import { geoMocks } from './geo'
 
 /**
  * In-memory gateway. It keeps the same rules the real services enforce — reviewer is not the
@@ -362,8 +368,14 @@ function mockSupportCheck(b: Brief): SupportCheck {
     ...(unsupported.length
       ? [`Every sentence needs support before release. Unsupported: ${unsupported.join(', ')}.`]
       : []),
-    ...(c.state !== 'approved' && b.status !== 'released'
+    ...(b.status === 'draft' && c.state !== 'approved'
       ? ['The case must be Approved before its product is released.']
+      : []),
+    // A correction is of a brief already out: the case's findings must still stand (ADR 0017).
+    ...(b.status === 'correcting' && !['approved', 'released', 'closed'].includes(c.state)
+      ? [
+          "The case's findings must stand (Approved, Released or Closed) for a correction to be released.",
+        ]
       : []),
   ]
   return {
@@ -585,6 +597,8 @@ function settleCctv(approvalId: string, status: string) {
 }
 
 export const mockApi: FusionApi = {
+  // Geo: gazetteer, locations and map layers (E32, ADR 0018).
+  ...geoMocks({ delay, refuse, audit, role: () => session.getActiveRole(), me }),
   // Name-of-interest searches (E30, ADR 0013).
   ...nameMocks({
     delay,
@@ -1414,11 +1428,16 @@ export const mockApi: FusionApi = {
       requireRole(['reviewer', 'centre_lead'], 'Releasing a brief')
       const b = briefAt(id)
       if (b.etag !== etag) refuse('precondition_failed', 'Someone changed this brief first.', 412)
+      if (b.status === 'released') refuse('conflict', 'This version is already released.', 409)
       if (b.authorId === me().id)
         refuse('self_approval_forbidden', 'You cannot release a brief you wrote.')
+      const correcting = b.status === 'correcting'
+      if (correcting && e38.correctors.get(b.id) === me().id)
+        refuse('self_approval_forbidden', 'You cannot release a correction you opened.')
       const check = mockSupportCheck(b)
       if (!check.ready) refuse('unsupported_sentences', check.blockers.join(' '))
       const now = new Date().toISOString()
+      const working = b.versions.find((v) => v.number === b.currentVersion)
       b.status = 'released'
       b.versions = b.versions.map((v) =>
         v.number === b.currentVersion
@@ -1426,24 +1445,177 @@ export const mockApi: FusionApi = {
               ...v,
               releasedAt: now,
               releasedBy: devName(),
-              sha256: 'mock'.padEnd(64, '0'),
+              sha256: `mock${b.currentVersion}`.padEnd(64, '0'),
               hasPdf: true,
             }
-          : v,
+          : v.number === working?.correctsVersion
+            ? { ...v, supersededBy: b.currentVersion, supersededAt: now }
+            : v,
       )
+      if (correcting) {
+        holds(b, e38.correctors.get(b.id) ?? me().id, 'corrector')
+        holds(b, me().id, 'releaser')
+        e38.facts.push({ kind: 'correction', at: now, seconds: 3 * 3600 })
+        audit('allowed', 'product.correction.release', b.title)
+        return b
+      }
+      holds(b, b.authorId, 'author')
+      holds(b, me().id, 'releaser')
+      e38.facts.push({ kind: 'release', at: now, seconds: 5 * 3600 })
       const c = db.cases.find((x) => x.id === b.caseId)
       if (c) c.state = 'released'
       audit('allowed', 'product.release', b.title)
       return b
     }),
   // Offline there is no Gotenberg: a text file says so instead of a PDF.
-  briefPdf: () =>
-    delay(
-      () =>
-        new Blob(['PDFs are rendered by reporting and Gotenberg; mock mode has neither.'], {
-          type: 'text/plain',
-        }),
+  briefPdf: (id, version) =>
+    delay(() => {
+      // Whoever downloads a released version holds the brief (ADR 0017).
+      const b = db.briefs.find((x) => x.id === id)
+      if (b && version) holds(b, me().id, 'download', version)
+      return new Blob(['PDFs are rendered by reporting and Gotenberg; mock mode has neither.'], {
+        type: 'text/plain',
+      })
+    }),
+  correctBrief: (id, reason, etag) =>
+    delay(() => {
+      requireRole(['analyst', 'supervisor'], 'Correcting a brief')
+      const b = briefAt(id)
+      if (b.etag !== etag) refuse('precondition_failed', 'Someone changed this brief first.', 412)
+      if (b.status === 'draft')
+        refuse(
+          'not_released',
+          'Only a released brief is corrected; this one is still a draft.',
+          409,
+        )
+      if (b.status === 'correcting')
+        refuse(
+          'correction_open',
+          `Version ${b.currentVersion} is already a correction in progress.`,
+          409,
+        )
+      if (!reason.trim()) refuse('validation_failed', 'Say why the brief is being corrected.', 400)
+      const now = new Date().toISOString()
+      b.currentVersion += 1
+      b.status = 'correcting'
+      b.versions.push({
+        number: b.currentVersion,
+        createdById: me().id,
+        createdBy: devName(),
+        createdAt: now,
+        hasPdf: false,
+        correctsVersion: b.currentVersion - 1,
+        correctionReason: reason.trim(),
+      })
+      b.updatedAt = now
+      b.etag = `"v${Number(b.etag.replace(/\D/g, '')) + 1}"`
+      e38.correctors.set(b.id, me().id)
+      audit('allowed', 'product.correction.open', b.title)
+      return b
+    }),
+  briefDistribution: (id) => delay(() => (briefAt(id), e38.recipients.get(id) ?? [])),
+
+  closeCase: (id) =>
+    delay(() => {
+      requireRole(['supervisor', 'centre_lead'], 'Closing a case')
+      const c = db.cases.find((x) => x.id === id)
+      if (!c) refuse('not_found', 'Case not found', 404)
+      if (c.state !== 'released') refuse('conflict', `A ${c.state} case cannot be closed.`, 409)
+      c.state = 'closed'
+      audit('allowed', 'case.close', c.ref)
+      return liveCase(id)
+    }),
+  lessons: (p) =>
+    delay(() =>
+      e38.lessons.filter(
+        (l) =>
+          (!p?.caseId || l.caseId === p.caseId) &&
+          (!p?.templateKey || l.templateKey === p.templateKey),
+      ),
     ),
+  recordLesson: (caseId, input) =>
+    delay(() => {
+      requireRole(['analyst', 'supervisor'], 'Recording a lesson')
+      const c = liveCase(caseId)
+      if (c.state !== 'closed')
+        refuse(
+          'requirement_missing',
+          `Lessons are recorded once the case is closed: ${c.ref} is ${c.state.replace('_', ' ')}.`,
+        )
+      lessonValid(input)
+      const now = new Date().toISOString()
+      const l: Lesson = {
+        id: `ls-${Date.now()}`,
+        caseId,
+        caseRef: c.ref,
+        title: input.title.trim(),
+        observation: input.observation.trim(),
+        recommendation: input.recommendation.trim(),
+        templateKey: input.templateKey?.trim() || c.mission?.templateKey || 'default',
+        recordedById: me().id,
+        recordedBy: devName(),
+        recordedAt: now,
+        updatedAt: now,
+        etag: '"v0"',
+      }
+      e38.lessons.unshift(l)
+      e38.facts.push({ kind: 'lesson', at: now })
+      audit('allowed', 'lesson.record', c.ref)
+      return l
+    }),
+  reviseLesson: (id, input, etag) =>
+    delay(() => {
+      requireRole(['analyst', 'supervisor'], 'Rewording a lesson')
+      const l = lessonAt(id, etag)
+      if (l.appliedVersion)
+        refuse(
+          'lesson_applied',
+          `This lesson was applied to ${l.templateKey} v${l.appliedVersion} and cannot change.`,
+          409,
+        )
+      lessonValid(input)
+      Object.assign(l, {
+        title: input.title.trim(),
+        observation: input.observation.trim(),
+        recommendation: input.recommendation.trim(),
+        templateKey: input.templateKey?.trim() || l.templateKey,
+        updatedAt: new Date().toISOString(),
+        etag: `"v${Number(l.etag.slice(2, -1)) + 1}"`,
+      })
+      audit('allowed', 'lesson.revise', l.caseRef)
+      return l
+    }),
+  applyLesson: (id, templateKey, etag) =>
+    delay(() => {
+      requireRole(['supervisor', 'centre_lead'], 'Applying a lesson to a template')
+      const l = lessonAt(id, etag)
+      const t = missions.find((x) => x.key === templateKey)
+      if (!t) refuse('validation_failed', 'No such mission template.', 400)
+      if (l.appliedVersion)
+        refuse(
+          'lesson_applied',
+          `This lesson was already applied to ${l.templateKey} v${l.appliedVersion}.`,
+          409,
+        )
+      if (t.retired) refuse('conflict', `The template '${t.name}' is retired.`, 409)
+      const now = new Date().toISOString()
+      Object.assign(l, {
+        templateKey: t.key,
+        appliedVersion: t.currentVersion,
+        appliedBy: devName(),
+        appliedAt: now,
+        updatedAt: now,
+        etag: `"v${Number(l.etag.slice(2, -1)) + 1}"`,
+      })
+      audit('allowed', 'lesson.apply', l.caseRef)
+      return l
+    }),
+
+  outcomes: (period) =>
+    delay(() => {
+      requireRole(['supervisor', 'centre_lead', 'leadership'], 'Reading the outcome dashboard')
+      return mockOutcomes(period)
+    }),
 
   reviews: () => delay(() => ({ items: db.reviews, nextCursor: null })),
   decideReview: (caseId, decision, comment) =>
@@ -1928,6 +2100,109 @@ const MISSION_READERS: Role[] = [
 ]
 
 const missions: MissionTemplate[] = fx.missionTemplates.map((t) => clone(t))
+
+// ---------------------------------------------------------------- E38: corrections, lessons, outcomes
+
+/** Who holds each brief, who opened each open correction, lessons, and the dashboard's facts. */
+const e38 = {
+  recipients: new Map<string, BriefRecipient[]>(),
+  correctors: new Map<string, string>(),
+  lessons: [] as Lesson[],
+  facts: seedFacts(),
+}
+
+/** A month of plausible activity, so the dashboard has something to show offline. */
+function seedFacts() {
+  const facts: { kind: string; at: string; seconds?: number }[] = []
+  const now = Date.now()
+  for (let day = 0; day < 90; day++) {
+    const at = (h: number) => new Date(now - day * 86_400_000 - h * 3_600_000).toISOString()
+    if (day % 2 === 0) facts.push({ kind: 'release', at: at(3), seconds: (2 + (day % 7)) * 3600 })
+    if (day % 11 === 4) facts.push({ kind: 'correction', at: at(5), seconds: (20 + day) * 3600 })
+    if (day % 3 === 1) facts.push({ kind: 'case_closed', at: at(6) })
+    if (day % 9 === 2) facts.push({ kind: 'lesson', at: at(7) })
+    for (let i = 0; i < 1 + (day % 4); i++) {
+      facts.push({ kind: 'alert_raised', at: at(i + 1) })
+      facts.push({
+        kind: 'alert_acknowledged',
+        at: at(i + 1),
+        seconds: 120 + ((day * 37 + i * 53) % 600),
+      })
+    }
+  }
+  return facts
+}
+
+function holds(b: Brief, id: string, source: BriefRecipient['source'], version = b.currentVersion) {
+  const list = e38.recipients.get(b.id) ?? []
+  if (list.some((r) => r.id === id)) return
+  const name = id === me().id ? devName() : id === b.authorId ? b.authorName : id
+  list.push({ id, name, source, firstVersion: version, recordedAt: new Date().toISOString() })
+  e38.recipients.set(b.id, list)
+}
+
+function lessonAt(id: string, etag: string): Lesson {
+  const l = e38.lessons.find((x) => x.id === id)
+  if (!l) refuse('not_found', 'No such lesson.', 404)
+  if (l.etag !== etag) refuse('precondition_failed', 'This changed since you loaded it.', 412)
+  return l
+}
+
+function lessonValid(i: LessonInput) {
+  if (!i.title.trim() || !i.observation.trim() || !i.recommendation.trim())
+    refuse(
+      'validation_failed',
+      'A lesson needs a title, what happened and what to do differently.',
+      400,
+    )
+}
+
+const median = (xs: number[]) => {
+  if (xs.length === 0) return undefined
+  const s = [...xs].sort((a, b) => a - b)
+  const m = Math.floor(s.length / 2)
+  return s.length % 2 ? s[m] : (s[m - 1]! + s[m]!) / 2
+}
+
+/** The same arithmetic as reporting's OutcomeService: whole UTC days, today included. */
+function mockOutcomes(period: OutcomePeriod): Outcomes {
+  const days = period === '7d' ? 7 : period === '90d' ? 90 : 30
+  const end = new Date()
+  end.setUTCHours(24, 0, 0, 0)
+  const start = new Date(end.getTime() - days * 86_400_000)
+  const rows = e38.facts.filter((f) => new Date(f.at) >= start && new Date(f.at) < end)
+  const of = (kind: string) => rows.filter((f) => f.kind === kind)
+  const timed = (kind: string) => median(of(kind).flatMap((f) => (f.seconds ? [f.seconds] : [])))
+  const released = of('release').length
+  const daily = Array.from({ length: days }, (_, i) => {
+    const date = new Date(start.getTime() + i * 86_400_000).toISOString().slice(0, 10)
+    const count = (kind: string) => of(kind).filter((f) => f.at.slice(0, 10) === date).length
+    return {
+      date,
+      released: count('release'),
+      corrections: count('correction'),
+      casesClosed: count('case_closed'),
+      lessons: count('lesson'),
+      alertsRaised: count('alert_raised'),
+    }
+  })
+  return {
+    period,
+    from: start.toISOString(),
+    to: end.toISOString(),
+    briefsReleased: released,
+    corrections: of('correction').length,
+    correctionRate: released ? of('correction').length / released : undefined,
+    medianTimeToRelease: timed('release'),
+    medianTimeToCorrect: timed('correction'),
+    casesClosed: of('case_closed').length,
+    lessonsRecorded: of('lesson').length,
+    alertsRaised: of('alert_raised').length,
+    alertsAcknowledged: of('alert_acknowledged').length,
+    medianTimeToAcknowledge: timed('alert_acknowledged'),
+    daily,
+  }
+}
 
 function missionCategoriesFree(categories: string[], self: string | undefined) {
   for (const category of categories) {

@@ -44,6 +44,8 @@ import { MatrixPanel } from './MatrixPanel'
 import { ScreeningBadge } from './MediaViewer'
 import { CaseBriefsPanel } from '@/features/briefs/CaseBriefsPanel'
 import { ChecklistPanel } from './ChecklistPanel'
+import { CaseLessonsPanel } from '@/features/lessons/LessonsPanel'
+import { LocationsPanel } from '@/features/geo/LocationsPanel'
 
 const timelineIcon: Record<TimelineEntry['kind'], { icon: LucideIcon; cls: string }> = {
   state: { icon: GitCommitVertical, cls: 'text-cyan bg-cyan/10 ring-cyan/30' },
@@ -141,6 +143,7 @@ function CaseView({ c }: { c: CaseDetail }) {
         <div className="min-w-0 space-y-5">
           <AssessmentNotice c={c} />
           <SummaryPanel c={c} />
+          <LocationsPanel subjectType="case" subjectId={c.id} />
           <FindingsPanel c={c} />
           <StatementsPanel c={c} />
           <EvidencePanel caseId={c.id} state={c.state} evidence={c.evidence} />
@@ -151,6 +154,7 @@ function CaseView({ c }: { c: CaseDetail }) {
         <div className="min-w-0 space-y-5">
           <CaseBriefsPanel c={c} />
           <ChecklistPanel c={c} />
+          <CaseLessonsPanel c={c} />
 
           <Panel title="Indicators" icon={Brain} eyebrow="Model outputs" bodyClassName="p-0">
             <MediaScreeningSummary caseId={c.id} />

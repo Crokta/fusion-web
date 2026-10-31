@@ -16,7 +16,10 @@ import { Route as ApprovalsRouteImport } from './routes/approvals'
 import { Route as CctvRouteImport } from './routes/cctv'
 import { Route as CollectionRouteImport } from './routes/collection'
 import { Route as FeedRouteImport } from './routes/feed'
+import { Route as GazetteerRouteImport } from './routes/gazetteer'
+import { Route as MapRouteImport } from './routes/map'
 import { Route as MissionsRouteImport } from './routes/missions'
+import { Route as OutcomesRouteImport } from './routes/outcomes'
 import { Route as ProviderRouteImport } from './routes/provider'
 import { Route as ReviewRouteImport } from './routes/review'
 import { Route as RosterRouteImport } from './routes/roster'
@@ -67,9 +70,24 @@ const FeedRoute = FeedRouteImport.update({
   path: '/feed',
   getParentRoute: () => rootRouteImport,
 } as any)
+const GazetteerRoute = GazetteerRouteImport.update({
+  id: '/gazetteer',
+  path: '/gazetteer',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const MapRoute = MapRouteImport.update({
+  id: '/map',
+  path: '/map',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const MissionsRoute = MissionsRouteImport.update({
   id: '/missions',
   path: '/missions',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const OutcomesRoute = OutcomesRouteImport.update({
+  id: '/outcomes',
+  path: '/outcomes',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ProviderRoute = ProviderRouteImport.update({
@@ -151,7 +169,10 @@ export interface FileRoutesByFullPath {
   '/cctv': typeof CctvRoute
   '/collection': typeof CollectionRoute
   '/feed': typeof FeedRoute
+  '/gazetteer': typeof GazetteerRoute
+  '/map': typeof MapRoute
   '/missions': typeof MissionsRoute
+  '/outcomes': typeof OutcomesRoute
   '/provider': typeof ProviderRoute
   '/review': typeof ReviewRoute
   '/roster': typeof RosterRoute
@@ -175,7 +196,10 @@ export interface FileRoutesByTo {
   '/cctv': typeof CctvRoute
   '/collection': typeof CollectionRoute
   '/feed': typeof FeedRoute
+  '/gazetteer': typeof GazetteerRoute
+  '/map': typeof MapRoute
   '/missions': typeof MissionsRoute
+  '/outcomes': typeof OutcomesRoute
   '/provider': typeof ProviderRoute
   '/review': typeof ReviewRoute
   '/roster': typeof RosterRoute
@@ -200,7 +224,10 @@ export interface FileRoutesById {
   '/cctv': typeof CctvRoute
   '/collection': typeof CollectionRoute
   '/feed': typeof FeedRoute
+  '/gazetteer': typeof GazetteerRoute
+  '/map': typeof MapRoute
   '/missions': typeof MissionsRoute
+  '/outcomes': typeof OutcomesRoute
   '/provider': typeof ProviderRoute
   '/review': typeof ReviewRoute
   '/roster': typeof RosterRoute
@@ -226,7 +253,10 @@ export interface FileRouteTypes {
     | '/cctv'
     | '/collection'
     | '/feed'
+    | '/gazetteer'
+    | '/map'
     | '/missions'
+    | '/outcomes'
     | '/provider'
     | '/review'
     | '/roster'
@@ -250,7 +280,10 @@ export interface FileRouteTypes {
     | '/cctv'
     | '/collection'
     | '/feed'
+    | '/gazetteer'
+    | '/map'
     | '/missions'
+    | '/outcomes'
     | '/provider'
     | '/review'
     | '/roster'
@@ -274,7 +307,10 @@ export interface FileRouteTypes {
     | '/cctv'
     | '/collection'
     | '/feed'
+    | '/gazetteer'
+    | '/map'
     | '/missions'
+    | '/outcomes'
     | '/provider'
     | '/review'
     | '/roster'
@@ -299,7 +335,10 @@ export interface RootRouteChildren {
   CctvRoute: typeof CctvRoute
   CollectionRoute: typeof CollectionRoute
   FeedRoute: typeof FeedRoute
+  GazetteerRoute: typeof GazetteerRoute
+  MapRoute: typeof MapRoute
   MissionsRoute: typeof MissionsRoute
+  OutcomesRoute: typeof OutcomesRoute
   ProviderRoute: typeof ProviderRoute
   ReviewRoute: typeof ReviewRoute
   RosterRoute: typeof RosterRoute
@@ -367,11 +406,32 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof FeedRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/gazetteer': {
+      id: '/gazetteer'
+      path: '/gazetteer'
+      fullPath: '/gazetteer'
+      preLoaderRoute: typeof GazetteerRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/map': {
+      id: '/map'
+      path: '/map'
+      fullPath: '/map'
+      preLoaderRoute: typeof MapRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/missions': {
       id: '/missions'
       path: '/missions'
       fullPath: '/missions'
       preLoaderRoute: typeof MissionsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/outcomes': {
+      id: '/outcomes'
+      path: '/outcomes'
+      fullPath: '/outcomes'
+      preLoaderRoute: typeof OutcomesRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/provider': {
@@ -483,7 +543,10 @@ const rootRouteChildren: RootRouteChildren = {
   CctvRoute: CctvRoute,
   CollectionRoute: CollectionRoute,
   FeedRoute: FeedRoute,
+  GazetteerRoute: GazetteerRoute,
+  MapRoute: MapRoute,
   MissionsRoute: MissionsRoute,
+  OutcomesRoute: OutcomesRoute,
   ProviderRoute: ProviderRoute,
   ReviewRoute: ReviewRoute,
   RosterRoute: RosterRoute,

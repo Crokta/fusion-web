@@ -11,6 +11,7 @@ import { cn } from '@/lib/cn'
 import { dateTime } from '@/lib/format'
 import { useShell } from '@/features/shell/ShellContext'
 import { KIND_META } from './FusionSearch'
+import { LocationsPanel } from '@/features/geo/LocationsPanel'
 
 const TABS = ['Overview', 'Images', 'Similarity', 'Metadata', 'Entities', 'Locations'] as const
 type Tab = (typeof TABS)[number]
@@ -266,7 +267,11 @@ export function ItemDrawer() {
               </ul>
             )}
 
-            {tab === 'Locations' && (
+            {tab === 'Locations' && (d.recordType === 'story' || d.recordType === 'case') && (
+              // A real story or case is placed on the map in search's geo module (E32, ADR 0018).
+              <LocationsPanel subjectType={d.recordType} subjectId={d.id} />
+            )}
+            {tab === 'Locations' && d.recordType !== 'story' && d.recordType !== 'case' && (
               <div className="space-y-3">
                 <div className="h-64 rounded-lg border border-line bg-canvas/60 p-2">
                   <NigeriaMap
