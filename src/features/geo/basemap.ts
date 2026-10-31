@@ -77,8 +77,12 @@ export function basemapStyle(server: TileServer, theme: Theme): StyleSpecificati
     return style
   }
 
-  // Martin builds glyphs from the font files it was given; use the first Noto Sans it has for every label.
-  const font = server.fonts.find((f) => f.startsWith('Noto Sans')) ?? server.fonts[0]
+  // Martin builds glyphs from the font files it was given. Labels keep the style's own font
+  // (Regular, Medium, Italic) where it is served, and fall back to Regular, or any font, where not.
+  const served = new Set(server.fonts)
+  const font = served.has('Noto Sans Regular')
+    ? 'Noto Sans Regular'
+    : (server.fonts.find((f) => f.startsWith('Noto Sans')) ?? server.fonts[0])
   style.sources[BASEMAP_SOURCE] = {
     type: 'vector',
     url: `${TILES_URL}/${BASEMAP_SOURCE}`,
@@ -88,16 +92,37 @@ export function basemapStyle(server: TileServer, theme: Theme): StyleSpecificati
   const base = protomapsLayers(BASEMAP_SOURCE, namedFlavor(theme), {
     lang: 'en',
   }) as LayerSpecification[]
+  // The basemap brings its own background, in its own colours.
+  style.layers = []
   for (const layer of base) {
     if (layer.type !== 'symbol') {
       style.layers.push(layer)
       continue
     }
-    // No sprite is served (POI icons add nothing here), and no labels without glyphs.
-    if (!font || layer.layout?.['icon-image']) continue
-    style.layers.push({ ...layer, layout: { ...layer.layout, 'text-font': [font] } })
+    // No labels without glyphs. No sprite is served, so layers that are icons first (POIs, road
+    // shields, one-way arrows) go, and the rest keep their text without the icon: town and city
+    // names come with a townspot icon.
+    if (!font || ICON_LAYERS.has(layer.id) || !layer.layout?.['text-field']) continue
+    const layout = Object.fromEntries(
+      Object.entries(layer.layout).filter(([k]) => !k.startsWith('icon-')),
+    ) as typeof layer.layout
+    const own = layout['text-font']
+    style.layers.push({
+      ...layer,
+      layout: { ...layout, 'text-font': own ? servedFonts(own, served, font) : [font] },
+    })
   }
   return style
+}
+
+const ICON_LAYERS = new Set(['pois', 'roads_shields', 'roads_oneway'])
+
+/** The font names in a text-font value (a list or an expression), each swapped for the fallback unless served. */
+function servedFonts<T>(value: T, served: Set<string>, fallback: string): T {
+  if (typeof value === 'string')
+    return (value.startsWith('Noto Sans') && !served.has(value) ? fallback : value) as T
+  if (Array.isArray(value)) return value.map((v) => servedFonts(v, served, fallback)) as T
+  return value
 }
 
 /** A simplified trace of Nigeria's borders (the same as NigeriaMap's), for the map without tiles. */

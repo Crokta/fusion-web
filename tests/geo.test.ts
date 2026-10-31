@@ -125,7 +125,36 @@ describe('basemap style', () => {
     expect(symbols.length).toBeGreaterThan(0)
     for (const l of symbols) {
       expect(l.layout?.['icon-image']).toBeUndefined()
-      expect(l.layout?.['text-font']).toEqual(['Noto Sans Regular'])
+      // Only Regular is served, so Medium and Italic fall back to it.
+      expect(JSON.stringify(l.layout?.['text-font'])).not.toMatch(/Noto Sans (Medium|Italic)/)
     }
+  })
+
+  it('keeps town and city names, without their townspot icon', () => {
+    const s = basemapStyle({ basemap: true, fonts: ['Noto Sans Regular'] }, 'dark')
+    const towns = s.layers.find((l) => l.id === 'places_locality')
+    expect(towns?.type).toBe('symbol')
+    if (towns?.type === 'symbol') expect(towns.layout?.['icon-image']).toBeUndefined()
+    expect(s.layers.map((l) => l.id)).not.toContain('pois')
+  })
+
+  it('gives every layer a unique id, or MapLibre rejects the whole style', () => {
+    for (const basemap of [true, false]) {
+      const ids = basemapStyle({ basemap, fonts: ['Noto Sans Regular'] }, 'dark').layers.map(
+        (l) => l.id,
+      )
+      expect(new Set(ids).size).toBe(ids.length)
+      expect(ids[0]).toBe('background')
+    }
+  })
+
+  it('keeps the style’s own fonts where the tile server serves them', () => {
+    const fonts = ['Noto Sans Italic', 'Noto Sans Medium', 'Noto Sans Regular']
+    const s = basemapStyle({ basemap: true, fonts }, 'dark')
+    const used = JSON.stringify(
+      s.layers.filter((l) => l.type === 'symbol').map((l) => l.layout?.['text-font']),
+    )
+    expect(used).toMatch(/Noto Sans Medium/)
+    expect(used).toMatch(/Noto Sans Italic/)
   })
 })
