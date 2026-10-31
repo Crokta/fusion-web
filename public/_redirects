@@ -1,0 +1,3 @@
+# Netlify: the app routes in the browser (TanStack Router), so a deep link or a refresh on
+# /cases/... must serve index.html. Files that exist (assets/, fusion-mark.svg) are served first.
+/*    /index.html   200
