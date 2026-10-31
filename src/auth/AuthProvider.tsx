@@ -383,6 +383,8 @@ export const can = {
     r === 'leadership',
   draftBrief: (r: Role) => r === 'analyst' || r === 'supervisor',
   releaseBrief: (r: Role) => r === 'reviewer' || r === 'centre_lead',
+  /** evidence.upload in permissions.yaml: uploading a file or capturing a link into a case. */
+  addEvidence: (r: Role) => r === 'analyst' || r === 'supervisor' || r === 'evidence_officer',
   /** case.write in permissions.yaml: assessment and the checklist. */
   writeCase: (r: Role) => r === 'analyst' || r === 'supervisor',
   /** triage.work in permissions.yaml: reading the queue and promoting from it. */

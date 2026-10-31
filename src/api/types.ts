@@ -844,6 +844,60 @@ export interface MediaAnalysis {
 }
 
 /** evidence's working copy: a read-only copy and a short-lived link; reading it is audited. */
+/**
+ * The evidence matrix (casework /cases/{id}/matrix): each finding and claim against the originals
+ * and statements it cites, with media's verdict on each original.
+ */
+export interface CaseMatrix {
+  caseId: string
+  sources: MatrixSource[]
+  rows: MatrixRow[]
+}
+
+export interface MatrixSource {
+  id: string
+  kind: 'original' | 'statement'
+  /** A statement's speaker; an original is named from the case's evidence list. */
+  label: string | null
+  contentType: string | null
+  at: string
+  screeningStatus: MediaScreening['status'] | null
+  verdict: string | null
+  confidence: number | null
+  /** How many rows cite it: 0 means it has not been weighed yet. */
+  citedBy: number
+}
+
+export type MatrixFlag = 'unsupported' | 'cites_likely_synthetic'
+
+export interface MatrixRow {
+  id: string
+  kind: 'finding' | 'claim'
+  text: string
+  /** A finding's confidence (low, moderate, high) or a claim's outcome. */
+  assessment: string
+  cites: string[]
+  flags: MatrixFlag[]
+}
+
+/** A link sent for capture into a case (evidence's capture request; collector does the fetching). */
+export interface CaptureRequest {
+  id: string
+  url: string
+  caseId: string | null
+  status: 'requested' | 'completed' | 'failed'
+  failureReason: string | null
+  /** The sealed original, once the capture completed. */
+  evidenceId: string | null
+  requestedAt: string
+}
+
+/** Bytes sent so far of a file going to the store. */
+export interface UploadProgress {
+  loaded: number
+  total: number
+}
+
 export interface WorkingCopy {
   url: string
   expiresAt: string

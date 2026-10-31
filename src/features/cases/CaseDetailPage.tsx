@@ -17,6 +17,7 @@ import {
 import { ApiError, describeError } from '@/api'
 import { useCase, useCaseAction, useCaseMedia, useSubmitCase } from '@/api/queries'
 import type { CaseDetail, EvidenceItem, TimelineEntry } from '@/api/types'
+import { can, useAuth } from '@/auth/AuthProvider'
 import { StateStepper } from '@/components/StateStepper'
 import { useToast } from '@/components/Toaster'
 import {
@@ -44,7 +45,9 @@ import {
   useAssessmentAccess,
 } from './Assessment'
 import { shortId } from '@/api/adapters'
+import { AddEvidence } from './AddEvidence'
 import { EvidenceList } from './EvidenceList'
+import { MatrixPanel } from './MatrixPanel'
 import { ScreeningBadge } from './MediaViewer'
 import { CaseBriefsPanel } from '@/features/briefs/CaseBriefsPanel'
 
@@ -146,8 +149,9 @@ function CaseView({ c }: { c: CaseDetail }) {
           <SummaryPanel c={c} />
           <FindingsPanel c={c} />
           <StatementsPanel c={c} />
-          <EvidencePanel caseId={c.id} evidence={c.evidence} />
+          <EvidencePanel caseId={c.id} state={c.state} evidence={c.evidence} />
           <ClaimsPanel c={c} />
+          <MatrixPanel caseId={c.id} evidence={c.evidence} />
         </div>
 
         <div className="min-w-0 space-y-5">
@@ -259,15 +263,29 @@ function MediaScreeningEmpty({ caseId }: { caseId: string }) {
   )
 }
 
-function EvidencePanel({ caseId, evidence }: { caseId: string; evidence: EvidenceItem[] }) {
+function EvidencePanel({
+  caseId,
+  state,
+  evidence,
+}: {
+  caseId: string
+  state: CaseDetail['state']
+  evidence: EvidenceItem[]
+}) {
   const media = useCaseMedia(caseId)
+  const { activeRole } = useAuth()
+  // evidence.upload in permissions.yaml; a closed case takes no new evidence.
+  const mayAdd = can.addEvidence(activeRole) && state !== 'closed'
   return (
     <Panel
       title="Evidence"
       icon={FileSearch}
       actions={
-        <span className="hidden text-[11px] text-ink-faint sm:inline">
-          Originals sealed · SHA-256 + RFC 3161
+        <span className="flex items-center gap-3">
+          <span className="hidden text-[11px] text-ink-faint sm:inline">
+            Originals sealed · SHA-256 + RFC 3161
+          </span>
+          {mayAdd && <AddEvidence caseId={caseId} />}
         </span>
       }
       bodyClassName="p-0"

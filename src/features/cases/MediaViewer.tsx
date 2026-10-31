@@ -15,7 +15,7 @@ export const VERDICT_LABEL: Record<string, string> = {
   LikelyAuthentic: 'Likely not AI-generated',
   Inconclusive: 'Inconclusive',
 }
-const VERDICT_HINT =
+export const VERDICT_HINT =
   'Advisory only. It says whether an AI model is likely to have made the image, not whether it was edited, staged or used out of context.'
 
 /** media's detector names (ADR 0010, 0011), as an analyst would say them. */
@@ -29,7 +29,7 @@ const DETECTOR_LABEL: Record<string, string> = {
 /** Checks that look for a mark: when they find none, that is the answer, not an uncertain one. */
 const PRESENCE_CHECKS = new Set(['watermark', 'declared'])
 
-const verdictTone = (v: string | null): Tone =>
+export const verdictTone = (v: string | null): Tone =>
   v === 'LikelySynthetic' ? 'red' : v === 'LikelyAuthentic' ? 'green' : 'neutral'
 
 export function ScreeningBadge({ screening }: { screening: MediaScreening | undefined }) {

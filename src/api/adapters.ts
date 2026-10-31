@@ -10,6 +10,9 @@
 import type {
   Alert,
   Approval,
+  CaptureRequest,
+  CaseMatrix,
+  MatrixFlag,
   ApprovalStep,
   Brief,
   SupportCheck,
@@ -78,6 +81,92 @@ export interface ChecklistItemDto {
   done: boolean
   doneBy: string | null
   doneAt: string | null
+}
+
+/** casework's CaseMatrixView (camelCase). */
+export interface CaseMatrixDto {
+  caseId: string
+  sources: {
+    id: string
+    kind: string
+    label: string | null
+    contentType: string | null
+    at: string
+    screeningStatus: string | null
+    verdict: string | null
+    confidence: number | null
+    citedBy: number
+  }[]
+  rows: {
+    id: string
+    kind: string
+    text: string
+    assessment: string
+    cites: string[]
+    flags: string[]
+  }[]
+}
+
+const matrixFlags: readonly string[] = ['unsupported', 'cites_likely_synthetic']
+
+export function toCaseMatrix(d: CaseMatrixDto): CaseMatrix {
+  return {
+    caseId: d.caseId,
+    sources: d.sources.map((s) => ({
+      ...s,
+      kind: s.kind === 'statement' ? 'statement' : 'original',
+      screeningStatus:
+        s.screeningStatus === 'requested' ||
+        s.screeningStatus === 'screened' ||
+        s.screeningStatus === 'failed'
+          ? s.screeningStatus
+          : null,
+    })),
+    rows: d.rows.map((r) => ({
+      ...r,
+      kind: r.kind === 'claim' ? 'claim' : 'finding',
+      // A flag this screen does not know yet is left out rather than shown raw.
+      flags: r.flags.filter((f): f is MatrixFlag => matrixFlags.includes(f)),
+    })),
+  }
+}
+
+/** evidence's CaptureRequestView (camelCase; status lowercase). */
+export interface CaptureRequestDto {
+  id: string
+  url: string
+  caseId: string | null
+  status: string
+  failureReason: string | null
+  evidenceId: string | null
+  requestedAt: string
+}
+
+/** evidence's UploadView: where the browser sends the file, and with which headers. */
+export interface UploadSlotDto {
+  id: string
+  uploadUrl: string
+  method: string
+  headers: Record<string, string>
+  urlExpiresAt: string
+}
+
+const captureStatuses = ['requested', 'completed', 'failed'] as const
+
+export function toCaptureRequest(d: CaptureRequestDto): CaptureRequest {
+  const status = d.status.toLowerCase()
+  return {
+    id: d.id,
+    url: d.url,
+    caseId: d.caseId,
+    // An unknown state is still in progress as far as the screen is concerned.
+    status: (captureStatuses as readonly string[]).includes(status)
+      ? (status as CaptureRequest['status'])
+      : 'requested',
+    failureReason: d.failureReason,
+    evidenceId: d.evidenceId,
+    requestedAt: d.requestedAt,
+  }
 }
 
 export interface CaseDto {

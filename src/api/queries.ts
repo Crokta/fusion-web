@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from './index'
 import type {
   Alert,
+  UploadProgress,
   BriefSentence,
   CaseState,
   ClaimOutcomeInput,
@@ -37,6 +38,8 @@ export const qk = {
   onDuty: ['roster', 'now'] as const,
   provider: ['provider'] as const,
   caseMedia: (caseId: string) => ['case', caseId, 'media'] as const,
+  capture: (id: string) => ['capture', id] as const,
+  caseMatrix: (caseId: string) => ['case', caseId, 'matrix'] as const,
   mediaAnalysis: (evidenceId: string) => ['media', evidenceId] as const,
   briefs: (caseId?: string) => ['briefs', caseId ?? 'all'] as const,
   brief: (id: string) => ['brief', id] as const,
@@ -127,6 +130,62 @@ export const useMediaAnalysis = (evidenceId: string, enabled = true) =>
     enabled,
     refetchInterval: (q) => (q.state.data?.job.status === 'running' ? 5_000 : false),
   })
+
+/** The matrix is derived from the case and its screenings: refreshed whenever either is. */
+export const useCaseMatrix = (caseId: string) =>
+  useQuery({
+    queryKey: qk.caseMatrix(caseId),
+    queryFn: () => api.caseMatrix(caseId),
+    // A verdict still to come lands in the matrix as it does on the evidence list.
+    refetchInterval: (q) =>
+      q.state.data?.sources.some((x) => x.screeningStatus === 'requested') ? 10_000 : false,
+  })
+
+/**
+ * Adding evidence (E26). Casework attaches the sealed original when evidence's event arrives, a
+ * moment after the commit, so the case and its screenings are refetched now and again shortly.
+ */
+function refreshCaseSoon(qc: ReturnType<typeof useQueryClient>, caseId: string) {
+  const refresh = () => {
+    void qc.invalidateQueries({ queryKey: qk.case(caseId) })
+    void qc.invalidateQueries({ queryKey: qk.caseMedia(caseId) })
+  }
+  refresh()
+  setTimeout(refresh, 2_000)
+  setTimeout(refresh, 6_000)
+}
+
+export function useUploadEvidence(caseId: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (a: { file: File; onProgress?: (p: UploadProgress) => void }) =>
+      api.uploadEvidence(caseId, a.file, a.onProgress),
+    onSuccess: () => refreshCaseSoon(qc, caseId),
+  })
+}
+
+export function useCaptureLink(caseId: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (a: { url: string; includeMedia: boolean }) =>
+      api.captureLink(caseId, a.url, a.includeMedia),
+    onSuccess: (c) => qc.setQueryData(qk.capture(c.id), c),
+  })
+}
+
+/** A capture takes collector a few seconds to a minute: poll until it ends, then refresh the case. */
+export function useCapture(id: string, caseId: string) {
+  const qc = useQueryClient()
+  return useQuery({
+    queryKey: qk.capture(id),
+    queryFn: async () => {
+      const c = await api.capture(id)
+      if (c.status === 'completed') refreshCaseSoon(qc, caseId)
+      return c
+    },
+    refetchInterval: (q) => (q.state.data?.status === 'requested' ? 3_000 : false),
+  })
+}
 
 /** A working copy is a read of the original: audited and a custody event, so only on request. */
 export function useWorkingCopy() {
@@ -350,6 +409,8 @@ export function useCaseAction(id: string) {
     },
     onSuccess: (data) => {
       qc.setQueryData(qk.case(id), data)
+      // A new finding or outcome changes what is cited.
+      qc.invalidateQueries({ queryKey: qk.caseMatrix(id) })
       // State can move (open → in assessment, approved → submitted): lists and the queue follow.
       qc.invalidateQueries({ queryKey: ['cases'] })
       qc.invalidateQueries({ queryKey: qk.reviews })

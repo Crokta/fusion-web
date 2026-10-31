@@ -5,6 +5,10 @@ import { alertReference } from '../adapters'
 import type {
   Alert,
   Brief,
+  CaptureRequest,
+  CaseMatrix,
+  EvidenceItem,
+  MatrixFlag,
   Delivery,
   DeliveryChannel,
   DutyShift,
@@ -110,7 +114,30 @@ const db = {
   publications: clone(fx.wallPublications),
   wall: fx.stateFromPreset(fx.wallPresets[0]!, 16, 'Zainab Bello'),
   signals: 0,
+  /** Evidence added in this session (E26), per case, laid over the fixture's. */
+  added: new Map<string, EvidenceItem[]>(),
+  /** The uploaded files themselves, for the working copy. */
+  files: new Map<string, { url: string; contentType: string; size: number; name: string }>(),
+  captures: [] as CaptureRequest[],
 }
+
+/**
+ * What media would say about an upload, without a model: a file named like a generator's output
+ * reads as AI-generated, anything else as authentic, so both colours can be tried in the mock.
+ */
+const mockVerdict = (name: string) =>
+  /(ai|generated|synthetic|dall|midjourney|stable|flux)/i.test(name)
+    ? { verdict: 'LikelySynthetic', confidence: 0.93 }
+    : { verdict: 'LikelyAuthentic', confidence: 0.04 }
+
+const kindOf = (contentType: string): EvidenceItem['kind'] =>
+  contentType.startsWith('image/')
+    ? 'image'
+    : contentType.startsWith('video/')
+      ? 'video'
+      : contentType.startsWith('audio/')
+        ? 'audio'
+        : 'document'
 
 // A day's roster around now, and the notices the fixture alerts would have sent.
 {
@@ -333,7 +360,16 @@ function liveCase(id: string): CaseDetail {
   const base = fx.caseDetail(id)
   if (!base) refuse('not_found', `Case ${id} not found`, 404)
   const live = db.cases.find((c) => c.id === base.id)
-  return { ...base, ...db.assessment.get(base.id), state: live?.state ?? base.state }
+  return {
+    ...base,
+    ...db.assessment.get(base.id),
+    evidence: [...base.evidence, ...(db.added.get(base.id) ?? [])],
+    state: live?.state ?? base.state,
+  }
+}
+
+function addEvidence(caseId: string, item: EvidenceItem) {
+  db.added.set(caseId, [...(db.added.get(caseId) ?? []), item])
 }
 
 /** The same editing rules as casework: analysts and supervisors, and not while under review or after release. */
@@ -702,29 +738,55 @@ export const mockApi: FusionApi = {
       const media = liveCase(caseId).evidence.filter(
         (e) => e.kind === 'image' || e.kind === 'video',
       )
-      return media.map((e, i) => ({
-        jobId: `job-${e.id}`,
-        evidenceId: e.id,
-        contentType: e.kind === 'image' ? 'image/jpeg' : 'video/mp4',
-        status: i === 0 ? ('screened' as const) : ('requested' as const),
-        requestedAt: new Date(Date.now() - 3600_000).toISOString(),
-        screenedAt: i === 0 ? new Date(Date.now() - 3500_000).toISOString() : null,
-        failure: null,
-        c2paPresent: i === 0 ? false : null,
-        verdict: i === 0 ? 'Inconclusive' : null,
-        confidence: null,
-        indicators:
-          i === 0
-            ? [
-                {
-                  detector: 'stub',
-                  modelVersion: '0.0.0-stub',
-                  verdict: 'Inconclusive',
-                  confidence: null,
-                },
-              ]
-            : [],
-      }))
+      return media.map((e, i) => {
+        const file = db.files.get(e.id)
+        if (file) {
+          const { verdict, confidence } = mockVerdict(file.name)
+          return {
+            jobId: `job-${e.id}`,
+            evidenceId: e.id,
+            contentType: file.contentType,
+            status: 'screened' as const,
+            requestedAt: e.capturedAt,
+            screenedAt: e.capturedAt,
+            failure: null,
+            c2paPresent: false,
+            verdict,
+            confidence,
+            indicators: [
+              {
+                detector: 'synthetic-image-a',
+                modelVersion: 'commfor-vit-s16-384 (mock)',
+                verdict,
+                confidence,
+              },
+            ],
+          }
+        }
+        return {
+          jobId: `job-${e.id}`,
+          evidenceId: e.id,
+          contentType: e.kind === 'image' ? 'image/jpeg' : 'video/mp4',
+          status: i === 0 ? ('screened' as const) : ('requested' as const),
+          requestedAt: new Date(Date.now() - 3600_000).toISOString(),
+          screenedAt: i === 0 ? new Date(Date.now() - 3500_000).toISOString() : null,
+          failure: null,
+          c2paPresent: i === 0 ? false : null,
+          verdict: i === 0 ? 'Inconclusive' : null,
+          confidence: null,
+          indicators:
+            i === 0
+              ? [
+                  {
+                    detector: 'stub',
+                    modelVersion: '0.0.0-stub',
+                    verdict: 'Inconclusive',
+                    confidence: null,
+                  },
+                ]
+              : [],
+        }
+      })
     }),
   mediaAnalysis: (evidenceId) =>
     delay(() => ({
@@ -789,6 +851,14 @@ export const mockApi: FusionApi = {
   workingCopy: (evidenceId) =>
     delay(() => {
       audit('allowed', 'evidence.working_copy.read', evidenceId)
+      const file = db.files.get(evidenceId)
+      if (file)
+        return {
+          url: file.url,
+          expiresAt: new Date(Date.now() + 15 * 60_000).toISOString(),
+          contentType: file.contentType,
+          sizeBytes: file.size,
+        }
       const svg =
         "<svg xmlns='http://www.w3.org/2000/svg' width='640' height='400'><rect width='640' height='400' fill='%23132433'/><text x='50%' y='50%' fill='%237f97a8' font-family='sans-serif' font-size='20' text-anchor='middle'>Working copy (mock)</text></svg>"
       return {
@@ -797,6 +867,87 @@ export const mockApi: FusionApi = {
         contentType: 'image/svg+xml',
         sizeBytes: svg.length,
       }
+    }),
+  uploadEvidence: async (caseId, file, onProgress) => {
+    requireRole(['analyst', 'supervisor', 'evidence_officer'], 'Adding evidence')
+    const c = liveCase(caseId)
+    for (const share of [0.3, 0.7, 1]) {
+      await new Promise((r) => setTimeout(r, 120))
+      onProgress?.({ loaded: Math.round(file.size * share), total: file.size })
+    }
+    const contentType = file.type || 'application/octet-stream'
+    const id = crypto.randomUUID()
+    db.files.set(id, {
+      url: URL.createObjectURL(file),
+      contentType,
+      size: file.size,
+      name: file.name,
+    })
+    addEvidence(c.id, {
+      id,
+      ref: `EV-${id.slice(-6).toUpperCase()}`,
+      kind: kindOf(contentType),
+      title: file.name,
+      source: `Uploaded by ${devName()}`,
+      capturedAt: new Date().toISOString(),
+      sha256: crypto.randomUUID().replace(/-/g, '').padEnd(64, '0'),
+      custodyEvents: 1,
+      marking: 'OFFICIAL',
+      label: `Upload · ${file.name}`,
+      timestamped: true,
+    })
+    audit('allowed', 'evidence.upload.commit', `${c.ref} · ${file.name}`)
+    return { evidenceId: id }
+  },
+  captureLink: (caseId, url, includeMedia) =>
+    delay(() => {
+      requireRole(['analyst', 'supervisor', 'evidence_officer'], 'Adding evidence')
+      const c = liveCase(caseId)
+      const capture: CaptureRequest = {
+        id: crypto.randomUUID(),
+        url,
+        caseId: c.id,
+        status: 'requested',
+        failureReason: null,
+        evidenceId: null,
+        requestedAt: new Date().toISOString(),
+      }
+      db.captures.push(capture)
+      audit(
+        'allowed',
+        'evidence.capture.request',
+        `${c.ref} · ${url}${includeMedia ? ' (+media)' : ''}`,
+      )
+      return capture
+    }),
+  capture: (id) =>
+    delay(() => {
+      const capture = db.captures.find((x) => x.id === id)
+      if (!capture) refuse('not_found', 'No such capture.', 404)
+      // Collector takes a few seconds: complete it on the first look after that.
+      if (
+        capture.status === 'requested' &&
+        Date.now() - new Date(capture.requestedAt).getTime() > 4_000
+      ) {
+        const evidenceId = crypto.randomUUID()
+        addEvidence(capture.caseId!, {
+          id: evidenceId,
+          ref: `EV-${evidenceId.slice(-6).toUpperCase()}`,
+          kind: 'web-capture',
+          title: capture.url,
+          source: new URL(capture.url).host,
+          capturedAt: new Date().toISOString(),
+          sha256: crypto.randomUUID().replace(/-/g, '').padEnd(64, '0'),
+          custodyEvents: 1,
+          marking: 'OFFICIAL',
+          label: 'Web archive (WARC)',
+          link: capture.url,
+          timestamped: true,
+        })
+        capture.status = 'completed'
+        capture.evidenceId = evidenceId
+      }
+      return capture
     }),
   provider: () =>
     delay(() => {
@@ -954,6 +1105,72 @@ export const mockApi: FusionApi = {
         ],
       })),
     ),
+  caseMatrix: (caseId) =>
+    delay((): CaseMatrix => {
+      const c = liveCase(caseId)
+      const rows = [
+        ...c.findings.map((f) => ({
+          id: f.id,
+          kind: 'finding' as const,
+          text: f.statement,
+          assessment: f.confidence as string,
+          cites: [...f.evidenceIds, ...(f.statementIds ?? [])],
+        })),
+        ...c.claims.map((x) => ({
+          id: x.id,
+          kind: 'claim' as const,
+          text: x.text,
+          assessment: x.outcome as string,
+          cites: [...(x.evidenceIds ?? []), ...(x.statementIds ?? [])],
+        })),
+      ]
+      // The same verdicts the mock's screenings give: uploads by name, fixture photos authentic.
+      const verdictOf = (e: EvidenceItem) => {
+        const file = db.files.get(e.id)
+        if (file) return mockVerdict(file.name)
+        return e.kind === 'image' ? { verdict: 'LikelyAuthentic', confidence: 0.05 } : null
+      }
+      const synthetic = new Set(
+        c.evidence.filter((e) => verdictOf(e)?.verdict === 'LikelySynthetic').map((e) => e.id),
+      )
+      const citedBy = (id: string) => rows.filter((r) => r.cites.includes(id)).length
+      return {
+        caseId: c.id,
+        sources: [
+          ...c.evidence.map((e) => {
+            const v = verdictOf(e)
+            return {
+              id: e.id,
+              kind: 'original' as const,
+              label: null,
+              contentType: null,
+              at: e.capturedAt,
+              screeningStatus: v ? ('screened' as const) : null,
+              verdict: v?.verdict ?? null,
+              confidence: v?.confidence ?? null,
+              citedBy: citedBy(e.id),
+            }
+          }),
+          ...(c.statements ?? []).map((st) => ({
+            id: st.id,
+            kind: 'statement' as const,
+            label: st.speaker,
+            contentType: null,
+            at: st.givenAt ?? st.recordedAt,
+            screeningStatus: null,
+            verdict: null,
+            confidence: null,
+            citedBy: citedBy(st.id),
+          })),
+        ],
+        rows: rows.map((r) => {
+          const flags: MatrixFlag[] = []
+          if (r.cites.length === 0) flags.push('unsupported')
+          if (r.cites.some((id) => synthetic.has(id))) flags.push('cites_likely_synthetic')
+          return { ...r, flags }
+        }),
+      }
+    }),
   recordClaim: (id, input) =>
     delay(() =>
       assess(id, 'claim.record', (c) => ({

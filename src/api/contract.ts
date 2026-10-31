@@ -2,6 +2,8 @@ import type {
   Alert,
   Brief,
   BriefSentence,
+  CaptureRequest,
+  CaseMatrix,
   SupportCheck,
   Approval,
   AuditEvent,
@@ -45,6 +47,7 @@ import type {
   WallPublication,
   WallState,
   WatchFloorSummary,
+  UploadProgress,
   WorkingCopy,
 } from './types'
 
@@ -81,6 +84,21 @@ export interface FusionApi {
   /** null when media holds no job for it yet. */
   mediaAnalysis(evidenceId: string): Promise<MediaAnalysis | null>
   workingCopy(evidenceId: string): Promise<WorkingCopy>
+
+  // Adding evidence to a case (E26). Evidence seals it as an original, casework attaches it,
+  // and media screens an image or video, so it reaches the case like a capture does.
+  /**
+   * Hashes the file, sends it straight to the store through a presigned PUT (never through the
+   * gateway, architecture §11) and commits it; evidence refuses it if the stored bytes differ.
+   */
+  uploadEvidence(
+    caseId: string,
+    file: File,
+    onProgress?: (p: UploadProgress) => void,
+  ): Promise<{ evidenceId: string }>
+  /** Asks collector to capture a page (and, with includeMedia, its photos and video). */
+  captureLink(caseId: string, url: string, includeMedia: boolean): Promise<CaptureRequest>
+  capture(id: string): Promise<CaptureRequest>
 
   // The Bright Data screen (collector, ADR 0007).
   provider(): Promise<ProviderReport>
@@ -123,6 +141,8 @@ export interface FusionApi {
   recordStatement(id: string, input: StatementInput): Promise<CaseDetail>
   recordClaim(id: string, input: { text: string; attributedTo: string }): Promise<CaseDetail>
   setClaimOutcome(caseId: string, claimId: string, input: ClaimOutcomeInput): Promise<CaseDetail>
+  /** Findings and claims against what they cite, with each original's screening (E26). */
+  caseMatrix(caseId: string): Promise<CaseMatrix>
 
   // Briefs (reporting). Drafting starts from a case's approved findings.
   briefs(params?: { caseId?: string }): Promise<Page<Brief>>

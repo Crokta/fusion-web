@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import {
   type ApprovalDto,
+  type CaptureRequestDto,
+  type CaseMatrixDto,
   type AuditEntryDto,
   type CaseDto,
   type EvidenceDto,
@@ -29,6 +31,8 @@ import {
   toStoryGroups,
   toTriageItem,
   toWallState,
+  toCaptureRequest,
+  toCaseMatrix,
 } from '@/api/adapters'
 
 const people: Record<string, string> = { 'u-ada': 'Ada Analyst', 'u-rex': 'Rex Reviewer' }
@@ -720,5 +724,81 @@ describe('captured images, video and post records', () => {
     expect([photo.label, photo.kind]).toEqual(['Image', 'image'])
     expect([video.label, video.kind]).toEqual(['Video', 'video'])
     expect([record.label, record.kind]).toEqual(['Post record (provider)', 'document'])
+  })
+})
+
+describe('a capture request from evidence', () => {
+  const dto: CaptureRequestDto = {
+    id: 'c1',
+    url: 'https://example.ng/story',
+    caseId: 'case-1',
+    status: 'Completed',
+    failureReason: null,
+    evidenceId: 'ev-1',
+    requestedAt: '2026-10-31T10:00:00Z',
+  }
+
+  it("reads evidence's status in any case", () => {
+    expect(toCaptureRequest(dto)).toMatchObject({ status: 'completed', evidenceId: 'ev-1' })
+    expect(toCaptureRequest({ ...dto, status: 'failed', failureReason: 'robots' })).toMatchObject({
+      status: 'failed',
+      failureReason: 'robots',
+    })
+  })
+
+  it('treats a state it does not know as still in progress', () => {
+    expect(toCaptureRequest({ ...dto, status: 'queued' }).status).toBe('requested')
+  })
+})
+
+describe('the evidence matrix from casework', () => {
+  const dto: CaseMatrixDto = {
+    caseId: 'case-1',
+    sources: [
+      {
+        id: 'ev-1',
+        kind: 'original',
+        label: null,
+        contentType: 'image/png',
+        at: '2026-10-31T10:00:00Z',
+        screeningStatus: 'screened',
+        verdict: 'LikelySynthetic',
+        confidence: 0.99,
+        citedBy: 1,
+      },
+      {
+        id: 'st-1',
+        kind: 'statement',
+        label: 'Police spokesperson',
+        contentType: null,
+        at: '2026-10-31T09:00:00Z',
+        screeningStatus: null,
+        verdict: null,
+        confidence: null,
+        citedBy: 0,
+      },
+    ],
+    rows: [
+      {
+        id: 'f-1',
+        kind: 'finding',
+        text: 'The flood reached the market.',
+        assessment: 'moderate',
+        cites: ['ev-1'],
+        flags: ['cites_likely_synthetic', 'something_new'],
+      },
+    ],
+  }
+
+  it('keeps sources in order with their screening', () => {
+    const m = toCaseMatrix(dto)
+    expect(m.sources.map((s) => [s.kind, s.verdict])).toEqual([
+      ['original', 'LikelySynthetic'],
+      ['statement', null],
+    ])
+  })
+
+  it('drops a flag this screen does not know rather than showing it raw', () => {
+    expect(toCaseMatrix(dto).rows[0]!.flags).toEqual(['cites_likely_synthetic'])
   })
 })

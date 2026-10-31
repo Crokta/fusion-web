@@ -1,6 +1,9 @@
 import {
   type AlertDto,
   type ApprovalDto,
+  type CaptureRequestDto,
+  type CaseMatrixDto,
+  type UploadSlotDto,
   type AuditEntryDto,
   type CaseDto,
   type EvidenceDto,
@@ -27,6 +30,8 @@ import {
   toShift,
   toApproval,
   toBrief,
+  toCaptureRequest,
+  toCaseMatrix,
   toSupportCheck,
   toAuditEvent,
   toCaseDetail,
@@ -45,6 +50,7 @@ import {
 import type { FusionApi } from './contract'
 import { ApiError, toProblem } from './problem'
 import { session } from './session'
+import { sha256Hex } from '@/lib/sha256'
 import type {
   DutyTier,
   FindingInput,
@@ -59,6 +65,7 @@ import type {
   SearchHit,
   SourceApproveResult,
   SourceImportResult,
+  UploadProgress,
   WallPreset,
   WorkingCopy,
 } from './types'
@@ -124,6 +131,50 @@ async function send<T>(path: string, opts: RequestOptions = {}): Promise<Raw<T>>
 }
 
 const request = async <T>(path: string, opts?: RequestOptions) => (await send<T>(path, opts)).body
+
+/**
+ * The file itself goes straight to the store on the presigned URL, never through the gateway
+ * (architecture §11). XMLHttpRequest rather than fetch, for upload progress. The store answers in
+ * S3's XML, so a refusal becomes a plain problem here.
+ */
+function putToStore(
+  slot: UploadSlotDto,
+  file: File,
+  onProgress?: (p: UploadProgress) => void,
+): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest()
+    xhr.open(slot.method || 'PUT', slot.uploadUrl)
+    for (const [k, v] of Object.entries(slot.headers ?? {})) xhr.setRequestHeader(k, v)
+    xhr.upload.onprogress = (e) => {
+      if (e.lengthComputable) onProgress?.({ loaded: e.loaded, total: e.total })
+    }
+    xhr.onload = () =>
+      xhr.status >= 200 && xhr.status < 300
+        ? resolve()
+        : reject(
+            new ApiError({
+              title: 'The file store refused the upload',
+              status: xhr.status,
+              code: xhr.status === 403 ? 'upload_expired' : 'upload_failed',
+              detail:
+                xhr.status === 403
+                  ? 'The upload link was refused or has expired. Try again.'
+                  : `The store answered ${xhr.status}.`,
+            }),
+          )
+    xhr.onerror = () =>
+      reject(
+        new ApiError({
+          title: 'File store unreachable',
+          status: 0,
+          code: 'network_error',
+          detail: `Could not reach ${new URL(slot.uploadUrl).host}.`,
+        }),
+      )
+    xhr.send(file)
+  })
+}
 
 /** A binary download (a brief's PDF), with the same token and the same problem handling. */
 async function download(path: string): Promise<Blob> {
@@ -357,6 +408,37 @@ export const httpApi: FusionApi = {
     }
   },
   workingCopy: (evidenceId) => request<WorkingCopy>(`/evidence/${enc(evidenceId)}/working-copy`),
+
+  caseMatrix: async (caseId) =>
+    toCaseMatrix(await request<CaseMatrixDto>(`/cases/${enc(caseId)}/matrix`)),
+
+  uploadEvidence: async (caseId, file, onProgress) => {
+    // Hash first: a file that changes on disk mid-upload is then refused rather than sealed.
+    const sha256 = await sha256Hex(file)
+    const slot = await request<UploadSlotDto>('/evidence/uploads', {
+      method: 'POST',
+      body: {
+        contentType: file.type || 'application/octet-stream',
+        fileName: file.name,
+        caseId,
+      },
+    })
+    await putToStore(slot, file, onProgress)
+    const sealed = await request<EvidenceDto>(`/evidence/uploads/${enc(slot.id)}/commit`, {
+      method: 'POST',
+      body: { caseId, sha256 },
+    })
+    return { evidenceId: sealed.id }
+  },
+  captureLink: async (caseId, url, includeMedia) =>
+    toCaptureRequest(
+      await request<CaptureRequestDto>('/evidence/captures', {
+        method: 'POST',
+        body: { url, caseId, includeMedia },
+      }),
+    ),
+  capture: async (id) =>
+    toCaptureRequest(await request<CaptureRequestDto>(`/evidence/captures/${enc(id)}`)),
 
   // collector's API is camelCase already (fusion_web ApiModel): no adapter needed.
   provider: () => request<ProviderReport>('/provider'),
