@@ -1,8 +1,13 @@
 import { describe, expect, it } from 'vitest'
 import {
+  toNameCluster,
+  toNameMention,
+  toNameReportData,
+  toNameSearch,
   type ApprovalDto,
   type CaptureRequestDto,
   type CaseMatrixDto,
+  type CctvRequestDto,
   type AuditEntryDto,
   type CaseDto,
   type EvidenceDto,
@@ -30,9 +35,16 @@ import {
   toSourceRecord,
   toStoryGroups,
   toTriageItem,
+  toWallController,
+  toWallLayoutPublication,
   toWallState,
   toCaptureRequest,
   toCaseMatrix,
+  toCctvRequest,
+  cctvRefusalText,
+  type MissionTemplateDto,
+  fromMissionTemplateInput,
+  toMissionTemplate,
 } from '@/api/adapters'
 
 const people: Record<string, string> = { 'u-ada': 'Ada Analyst', 'u-rex': 'Rex Reviewer' }
@@ -91,9 +103,16 @@ describe('cases', () => {
   it('keeps the server ETag for If-Match and builds a newest-first timeline', () => {
     const d = toCaseDetail(caseDto, [], name, '"v5"')
     expect(d.etag).toBe('"v5"')
-    expect(d.checklist).toEqual([
-      { key: 'sources_checked', label: 'Sources checked', done: true },
-      { key: 'limitations_noted', label: 'Limitations noted', done: false },
+    // A casework older than E29 sends no required flag: every line was needed for Submit.
+    expect(d.checklist).toMatchObject([
+      {
+        key: 'sources_checked',
+        label: 'Sources checked',
+        done: true,
+        required: true,
+        doneBy: 'Ada Analyst',
+      },
+      { key: 'limitations_noted', label: 'Limitations noted', done: false, required: true },
     ])
     expect(d.timeline[0]!.at >= d.timeline[d.timeline.length - 1]!.at).toBe(true)
   })
@@ -280,6 +299,88 @@ describe('feed, alerts and the wall', () => {
     )
     expect(w).toMatchObject({ revision: 7, controller: 'simulated', updatedBy: 'Rex Reviewer' })
     expect(w.screens).toHaveLength(16)
+  })
+
+  it('says which publication is on the wall and how the controller is (E33)', () => {
+    const screens = Array.from({ length: 16 }, (_, index) => ({
+      index,
+      content: 'news' as const,
+      contextRef: null,
+      leaseExpiresAt: null,
+    }))
+    const w = toWallState(
+      {
+        version: 9,
+        preset: 'night-shift',
+        rows: 4,
+        cols: 4,
+        visitorMode: false,
+        updatedBy: 'u-rex',
+        updatedAt: 'x',
+        screens,
+        groups: [],
+        controller: 'offline',
+        published: {
+          id: 'p1',
+          ref: 'WL-ABC123',
+          layoutVersion: 8,
+          preset: 'incident',
+          publishedBy: 'u-rex',
+          publishedAt: 'y',
+        },
+      },
+      name,
+    )
+    expect(w.controller).toBe('offline')
+    expect(w.published).toEqual({
+      id: 'p1',
+      ref: 'WL-ABC123',
+      revision: 8,
+      preset: 'incident',
+      publishedBy: 'Rex Reviewer',
+      publishedAt: 'y',
+    })
+    expect(w.screens[0]!.contextRef).toBeUndefined()
+
+    const p = toWallLayoutPublication(
+      {
+        id: 'p2',
+        ref: 'WL-DEF456',
+        layoutVersion: 9,
+        preset: 'night-shift',
+        screens,
+        groups: [],
+        visitorMode: true,
+        adapter: 'simulator',
+        publishedBy: 'u-rex',
+        publishedAt: 'z',
+        delivered: false,
+        failure: 'dependency_unavailable: The wall controller is temporarily unavailable.',
+      },
+      name,
+    )
+    expect(p).toMatchObject({ revision: 9, publishedBy: 'Rex Reviewer', delivered: false })
+    expect(p.failure).toMatch(/^dependency_unavailable/)
+
+    const c = toWallController({
+      adapter: 'simulator',
+      online: true,
+      inputsMuted: true,
+      layout: {
+        publicationId: 'p1',
+        publicationRef: 'WL-ABC123',
+        preset: 'incident',
+        layoutVersion: 8,
+        screens,
+        groups: [{ id: 'grp-0-1', cells: [0, 1], content: 'map-ng' }],
+      },
+      layoutActivatedAt: null,
+      routes: [],
+      log: [{ at: 'y', command: 'activate-layout', detail: 'WL-ABC123', accepted: true }],
+    })
+    expect(c.layout).toMatchObject({ revision: 8, publicationRef: 'WL-ABC123' })
+    expect(c.layoutActivatedAt).toBeUndefined()
+    expect(toWallController({ ...c, layout: null, layoutActivatedAt: null }).layout).toBeUndefined()
   })
 })
 
@@ -800,5 +901,248 @@ describe('the evidence matrix from casework', () => {
 
   it('drops a flag this screen does not know rather than showing it raw', () => {
     expect(toCaseMatrix(dto).rows[0]!.flags).toEqual(['cites_likely_synthetic'])
+  })
+})
+
+describe('toCctvRequest (E31)', () => {
+  const dto: CctvRequestDto = {
+    id: 'r-1',
+    caseId: 'c-1',
+    status: 'refused',
+    approvalId: 'ap-1',
+    cameras: ['cam-1'],
+    location: null,
+    windowStart: '2026-10-31T08:00:00Z',
+    windowEnd: '2026-10-31T10:00:00Z',
+    attributes: ['red jacket'],
+    freeText: null,
+    lawfulBasis: 'prevention_of_crime',
+    legalReference: null,
+    reason: 'Robbery at the market, suspect left on foot.',
+    requestedBy: 'u-ada',
+    requestedAt: '2026-10-31T07:00:00Z',
+    submittedAt: '2026-10-31T07:05:00Z',
+    decidedAt: '2026-10-31T07:30:00Z',
+    refusalCode: 'approver_refused',
+    version: 4,
+  }
+
+  it('names the requester, carries the ETag and says why it was refused', () => {
+    const r = toCctvRequest(dto, name, 'INV-0264')
+    expect([r.requesterName, r.caseRef, r.etag, r.location]).toEqual([
+      'Ada Analyst',
+      'INV-0264',
+      '"v4"',
+      undefined,
+    ])
+    expect(r.refusal).toBe('An approver refused the request.')
+  })
+
+  it('gives no refusal text unless refused', () => {
+    expect(toCctvRequest({ ...dto, status: 'approved' }, name).refusal).toBeUndefined()
+  })
+
+  it('words each refusal code plainly, and an unknown one with its code', () => {
+    expect(cctvRefusalText('capability_not_authorised')).toMatch(/switched off by policy/)
+    expect(cctvRefusalText('something_new')).toBe('Refused by governance (something_new).')
+  })
+})
+
+describe('missions (E29)', () => {
+  it('maps the case category, its mission and each line with its note', () => {
+    const d = toCaseDetail(
+      {
+        ...caseDto,
+        category: 'Civil unrest',
+        mission: { templateKey: 'protest', templateVersion: 2, name: 'Protest monitoring' },
+        checklist: [
+          {
+            key: 'route_mapped',
+            label: 'Route mapped',
+            done: false,
+            doneBy: null,
+            doneAt: null,
+            required: false,
+            note: 'A static rally.',
+            noteBy: 'u-ada',
+            noteAt: '2026-10-31T10:00:00Z',
+          },
+        ],
+      },
+      [],
+      name,
+      null,
+    )
+    expect(d.category).toBe('Civil unrest')
+    expect(d.mission).toEqual({ templateKey: 'protest', version: 2, name: 'Protest monitoring' })
+    expect(d.checklist[0]).toMatchObject({
+      required: false,
+      note: 'A static rally.',
+      noteBy: 'Ada Analyst',
+    })
+    expect(toCaseSummary(caseDto, name).category).toBe('Unclassified')
+  })
+
+  it('maps a template with its versions, newest first, and the ETag', () => {
+    const dto: MissionTemplateDto = {
+      id: 't-1',
+      key: 'protest',
+      name: 'Protest monitoring',
+      description: null,
+      categories: ['Civil unrest'],
+      currentVersion: 2,
+      retired: false,
+      isDefault: false,
+      items: [{ key: 'crowd_estimate', label: 'Crowd estimated', required: true }],
+      versions: [
+        {
+          number: 2,
+          name: 'Protest monitoring',
+          items: [],
+          createdBy: 'u-rex',
+          createdAt: '2026-10-31T10:00:00Z',
+        },
+        {
+          number: 1,
+          name: 'Protests',
+          items: [],
+          createdBy: 'u-ada',
+          createdAt: '2026-10-30T10:00:00Z',
+        },
+      ],
+      createdBy: 'u-ada',
+      createdAt: '2026-10-30T10:00:00Z',
+      updatedBy: 'u-rex',
+      updatedAt: '2026-10-31T10:00:00Z',
+      version: 3,
+    }
+    const t = toMissionTemplate(dto, name)
+    expect(t.etag).toBe('"v3"')
+    expect(t.description).toBe('')
+    expect(t.updatedBy).toBe('Rex Reviewer')
+    expect(t.versions.map((v) => v.createdBy)).toEqual(['Rex Reviewer', 'Ada Analyst'])
+  })
+
+  it('sends trimmed categories and labels and drops blank lines', () => {
+    expect(
+      fromMissionTemplateInput({
+        name: ' Protest ',
+        description: ' ',
+        categories: [' Civil unrest ', ''],
+        items: [
+          { key: 'crowd', label: ' Crowd ', required: true },
+          { key: 'blank', label: '  ', required: false },
+        ],
+      }),
+    ).toEqual({
+      name: 'Protest',
+      description: null,
+      categories: ['Civil unrest'],
+      items: [{ key: 'crowd', label: 'Crowd', required: true }],
+    })
+  })
+})
+
+describe('name searches (E30)', () => {
+  const name = (id: string | null | undefined) => (id === 'u-1' ? 'Funmilayo Adeleke' : '—')
+
+  it('maps a search, with its etag and the requester by name', () => {
+    const s = toNameSearch(
+      {
+        id: 'n1',
+        name: 'Jane Private',
+        kind: 'private_individual',
+        caseId: null,
+        reason: 'Threat to life',
+        requestedBy: 'u-1',
+        requestedAt: '2026-10-31T09:00:00Z',
+        status: 'awaiting_approval',
+        approvalId: null,
+        approvalExpiresAt: null,
+        resultCount: 0,
+        completedAt: null,
+        version: 1,
+      },
+      name,
+    )
+    expect(s).toMatchObject({
+      kind: 'private_individual',
+      status: 'awaiting_approval',
+      requestedBy: 'Funmilayo Adeleke',
+      etag: '"v1"',
+    })
+    expect(s.caseId).toBeUndefined()
+  })
+
+  it('maps mentions and clusters, reading an unknown cluster status as suggested', () => {
+    expect(
+      toNameMention({
+        id: 'm1',
+        documentType: 'story',
+        documentId: 's1',
+        caseId: null,
+        title: 'Governor visits camps',
+        at: '2026-10-30T09:00:00Z',
+        source: 'punchng.com',
+        snippet: 'Governor <mark>Amina Bello</mark> visited',
+        score: 3.2,
+        clusterId: 'c1',
+      }),
+    ).toMatchObject({
+      clusterId: 'c1',
+      source: 'punchng.com',
+      snippet: expect.stringContaining('<mark>'),
+    })
+    const c = toNameCluster(
+      {
+        id: 'c1',
+        terms: ['governor', 'kaduna'],
+        mentionCount: 2,
+        firstSeen: '2026-10-30T09:00:00Z',
+        lastSeen: '2026-10-31T09:00:00Z',
+        status: 'pending-review',
+        decidedBy: null,
+        decidedAt: null,
+      },
+      name,
+    )
+    expect(c.status).toBe('suggested')
+    expect(c.decidedBy).toBeUndefined()
+  })
+
+  it('flattens report data aggregates and keeps every breakdown, known or new', () => {
+    const r = toNameReportData(
+      {
+        id: 'r1',
+        nameSearchId: 'n1',
+        name: 'Amina Bello',
+        kind: 'public',
+        caseId: null,
+        createdBy: 'u-1',
+        createdAt: '2026-10-31T10:00:00Z',
+        retentionClass: 'standard',
+        aggregates: {
+          basis: 'confirmed_clusters',
+          mentionCount: 2,
+          clusterCount: 1,
+          firstSeen: '2026-10-30T09:00:00Z',
+          lastSeen: null,
+          breakdowns: {
+            day: [{ key: '2026-10-30', count: 2 }],
+            location: [{ key: 'Kaduna', count: 2 }],
+          },
+          caseIds: [],
+          clusters: [{ id: 'c1', status: 'confirmed', terms: ['governor'], mentionCount: 2 }],
+        },
+      },
+      name,
+    )
+    expect(r).toMatchObject({
+      basis: 'confirmed_clusters',
+      mentionCount: 2,
+      createdBy: 'Funmilayo Adeleke',
+    })
+    expect(r.lastSeen).toBeUndefined()
+    expect(Object.keys(r.breakdowns)).toEqual(['day', 'location'])
   })
 })

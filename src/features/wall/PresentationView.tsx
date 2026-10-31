@@ -71,7 +71,7 @@ export function PresentationView({
               Homeland Fusion Centre
             </span>
             <span className="text-ink-faint">·</span>
-            <span>{PRESET_NAME[state.preset]}</span>
+            <span>{PRESET_NAME[state.preset] ?? state.preset}</span>
             <span className="num text-ink-faint">rev {state.revision}</span>
             {state.visitorMode && (
               <span className="inline-flex items-center gap-1.5 rounded-full bg-amber/15 px-2 py-0.5 font-semibold text-amber">

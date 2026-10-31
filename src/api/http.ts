@@ -1,11 +1,23 @@
 import {
+  type NameClusterDto,
+  type NameMentionDto,
+  type NameReportDataDto,
+  type NameSearchDto,
+  toNameCluster,
+  toNameMention,
+  toNameReportData,
+  toNameSearch,
   type AlertDto,
   type ApprovalDto,
   type CaptureRequestDto,
   type CaseMatrixDto,
+  type CctvRequestDto,
   type UploadSlotDto,
   type AuditEntryDto,
   type CaseDto,
+  type MissionTemplateDto,
+  toMissionTemplate,
+  fromMissionTemplateInput,
   type EvidenceDto,
   type MessageDto,
   type ShiftDto,
@@ -19,6 +31,8 @@ import {
   type SourceViewDto,
   type StoryDto,
   type TriageItemDto,
+  type WallControllerDto,
+  type WallLayoutPublicationDto,
   type WallPublicationDto,
   type WallStateDto,
   fromPriority,
@@ -32,6 +46,7 @@ import {
   toBrief,
   toCaptureRequest,
   toCaseMatrix,
+  toCctvRequest,
   toSupportCheck,
   toAuditEvent,
   toCaseDetail,
@@ -43,6 +58,8 @@ import {
   toSourceRecord,
   toStoryGroups,
   toTriageItem,
+  toWallController,
+  toWallLayoutPublication,
   toWallPublication,
   toWallState,
   toWatchFloor,
@@ -52,6 +69,7 @@ import { ApiError, toProblem } from './problem'
 import { session } from './session'
 import { sha256Hex } from '@/lib/sha256'
 import type {
+  CctvRequest,
   DutyTier,
   FindingInput,
   Kpi,
@@ -258,6 +276,25 @@ async function briefCall(path: string, opts?: RequestOptions) {
 
 async function fetchCase(id: string) {
   return send<CaseDto>(`/cases/${enc(id)}`)
+}
+
+/** Case references for a set of case ids; a case the person cannot open keeps its short id. */
+async function caseRefs(ids: string[]): Promise<Map<string, string>> {
+  const unique = [...new Set(ids)]
+  const refs = await Promise.all(
+    unique.map((id) =>
+      fetchCase(id)
+        .then((r) => r.body.reference)
+        .catch(() => undefined),
+    ),
+  )
+  return new Map(unique.flatMap((id, i) => (refs[i] ? [[id, refs[i]] as const] : [])))
+}
+
+async function cctvCall(path: string, opts?: RequestOptions): Promise<CctvRequest> {
+  const r = await request<CctvRequestDto>(path, opts)
+  const [name, refs] = await Promise.all([nameOf([r.requestedBy]), caseRefs([r.caseId])])
+  return toCctvRequest(r, name, refs.get(r.caseId))
 }
 
 export const httpApi: FusionApi = {
@@ -494,8 +531,8 @@ export const httpApi: FusionApi = {
   },
   // Each assessment call answers with the case; the page needs evidence and names on top, so it
   // is read again through case() — one more request for a page that stays consistent.
-  setChecklistItem: async (id, key, done) => {
-    await send(`/cases/${enc(id)}/checklist/${enc(key)}`, { method: 'PUT', body: { done } })
+  setChecklistItem: async (id, key, done, note) => {
+    await send(`/cases/${enc(id)}/checklist/${enc(key)}`, { method: 'PUT', body: { done, note } })
     return httpApi.case(id)
   },
   setCaseSummary: async (id, summary) => {
@@ -696,5 +733,143 @@ export const httpApi: FusionApi = {
       body: { decision },
     })
     return toWallPublication(p, await nameOf([p.requestedBy]))
+  },
+  saveWallPreset: (input) => request<WallPreset>('/wall/presets', { method: 'POST', body: input }),
+  deleteWallPreset: async (key) => {
+    await request<void>(`/wall/presets/${enc(key)}`, { method: 'DELETE' })
+  },
+  publishWallLayout: async (revision) => {
+    const p = await request<WallLayoutPublicationDto>('/wall/layout-publications', {
+      method: 'POST',
+      ifMatch: `"v${revision}"`,
+    })
+    return toWallLayoutPublication(p, await nameOf([p.publishedBy]))
+  },
+  wallLayoutPublications: async () => {
+    const list = await request<WallLayoutPublicationDto[]>('/wall/layout-publications')
+    const name = await nameOf(list.map((p) => p.publishedBy))
+    return list.map((p) => toWallLayoutPublication(p, name))
+  },
+  wallController: async () =>
+    toWallController(await request<WallControllerDto>('/wall/controller')),
+
+  cctvRequests: async (p) => {
+    const page = await request<PageDto<CctvRequestDto>>('/cctv/requests', {
+      query: { status: p?.status, limit: '200' },
+    })
+    const [name, refs] = await Promise.all([
+      nameOf(page.items.map((r) => r.requestedBy)),
+      caseRefs(page.items.map((r) => r.caseId)),
+    ])
+    return {
+      items: page.items.map((r) => toCctvRequest(r, name, refs.get(r.caseId))),
+      nextCursor: page.nextCursor,
+    }
+  },
+  cctvRequest: async (id) => {
+    const found = await cctvCall(`/cctv/requests/${enc(id)}`)
+    if (!found.approvalId) return { request: found }
+    // The approvers' decisions, and a refusal's reason, live in governance.
+    const a = await request<ApprovalDto>(`/approvals/${enc(found.approvalId)}`).catch(
+      () => undefined,
+    )
+    if (!a) return { request: found }
+    const name = await nameOf([a.requestedBy, ...a.decisions.map((d) => d.decidedBy)])
+    return { request: found, approval: toApproval(a, name, found.caseRef) }
+  },
+  createCctvRequest: (caseId, input) =>
+    cctvCall('/cctv/requests', { method: 'POST', body: { caseId, ...input } }),
+  editCctvRequest: (id, input, etag) =>
+    cctvCall(`/cctv/requests/${enc(id)}`, { method: 'PUT', body: input, ifMatch: etag }),
+  submitCctvRequest: (id, etag) =>
+    cctvCall(`/cctv/requests/${enc(id)}/submit`, { method: 'POST', ifMatch: etag }),
+  cctvCameras: async () => (await request<{ id: string }[]>('/cctv/cameras')).map((c) => c.id),
+  cctvLawfulBases: () => request<{ code: string; label: string }[]>('/cctv/lawful-bases'),
+
+  // Missions (E29, ADR 0012).
+  missionTemplates: async (p) => {
+    const list = await request<{ items: MissionTemplateDto[] }>('/missions', {
+      query: { retired: p?.retired ? 'true' : undefined },
+    })
+    const name = await nameOf(
+      list.items.flatMap((t) => [t.updatedBy, ...t.versions.map((v) => v.createdBy)]),
+    )
+    return list.items.map((t) => toMissionTemplate(t, name))
+  },
+  createMissionTemplate: async (input) => {
+    const t = await request<MissionTemplateDto>('/missions', {
+      method: 'POST',
+      body: fromMissionTemplateInput(input),
+    })
+    return toMissionTemplate(t, await nameOf([t.updatedBy]))
+  },
+  reviseMissionTemplate: async (key, input, etag) => {
+    const t = await request<MissionTemplateDto>(`/missions/${enc(key)}`, {
+      method: 'PUT',
+      body: fromMissionTemplateInput({ ...input, key: undefined }),
+      ifMatch: etag,
+    })
+    return toMissionTemplate(t, await nameOf(t.versions.map((v) => v.createdBy)))
+  },
+  retireMissionTemplate: async (key, etag) => {
+    const t = await request<MissionTemplateDto>(`/missions/${enc(key)}/retire`, {
+      method: 'POST',
+      ifMatch: etag,
+    })
+    return toMissionTemplate(t, await nameOf([t.updatedBy]))
+  },
+  applyCaseMission: async (caseId, templateKey) => {
+    await send(`/cases/${enc(caseId)}/mission`, { method: 'PUT', body: { templateKey } })
+    return httpApi.case(caseId)
+  },
+  setCaseCategory: async (caseId, category) => {
+    await send(`/cases/${enc(caseId)}/category`, { method: 'PUT', body: { category } })
+    return httpApi.case(caseId)
+  },
+
+  // Name-of-interest searches (E30, ADR 0013).
+  nameSearches: async () => {
+    const page = await request<PageDto<NameSearchDto>>('/names', { query: { requester: 'me' } })
+    const name = await nameOf(page.items.map((s) => s.requestedBy))
+    return { items: page.items.map((s) => toNameSearch(s, name)), nextCursor: page.nextCursor }
+  },
+  nameSearch: async (id) => {
+    const s = await request<NameSearchDto>(`/names/${enc(id)}`)
+    return toNameSearch(s, await nameOf([s.requestedBy]))
+  },
+  startNameSearch: async (input) => {
+    const s = await request<NameSearchDto>('/names', { method: 'POST', body: input })
+    return toNameSearch(s, await nameOf([s.requestedBy]))
+  },
+  nameMentions: async (id, p) => {
+    const page = await request<PageDto<NameMentionDto>>(`/names/${enc(id)}/results`, {
+      query: { clusterId: p?.clusterId, limit: '100' },
+    })
+    return { items: page.items.map(toNameMention), nextCursor: page.nextCursor }
+  },
+  nameClusters: async (id) => {
+    const clusters = await request<NameClusterDto[]>(`/names/${enc(id)}/clusters`)
+    const name = await nameOf(clusters.map((c) => c.decidedBy))
+    return clusters.map((c) => toNameCluster(c, name))
+  },
+  decideNameCluster: async (id, clusterId, confirmed) => {
+    const c = await request<NameClusterDto>(
+      `/names/${enc(id)}/clusters/${enc(clusterId)}/${confirmed ? 'confirm' : 'reject'}`,
+      { method: 'POST' },
+    )
+    return toNameCluster(c, await nameOf([c.decidedBy]))
+  },
+  nameReportData: async (id) => {
+    try {
+      const r = await request<NameReportDataDto>(`/names/${enc(id)}/report-data`)
+      return toNameReportData(r, await nameOf([r.createdBy]))
+    } catch (e) {
+      if (e instanceof ApiError && e.status === 404) return null
+      throw e
+    }
+  },
+  takeNameReportData: async (id) => {
+    const r = await request<NameReportDataDto>(`/names/${enc(id)}/report-data`, { method: 'POST' })
+    return toNameReportData(r, await nameOf([r.createdBy]))
   },
 }

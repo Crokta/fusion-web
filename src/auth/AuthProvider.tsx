@@ -366,6 +366,13 @@ export function useAuth() {
 
 /** Role helpers mirroring the gateway's permission policies. */
 export const can = {
+  // wall.view and wall.operate in permissions.yaml (publishToWall is wall.operate).
+  viewWall: (r: Role) =>
+    r === 'analyst' ||
+    r === 'supervisor' ||
+    r === 'reviewer' ||
+    r === 'centre_lead' ||
+    r === 'leadership',
   publishToWall: (r: Role) => r === 'supervisor' || r === 'centre_lead',
   decideWallRequest: (r: Role) => r === 'supervisor' || r === 'centre_lead',
   decideReview: (r: Role) => r === 'reviewer' || r === 'supervisor' || r === 'centre_lead',
@@ -391,8 +398,23 @@ export const can = {
   workTriage: (r: Role) => r === 'analyst' || r === 'supervisor',
   /** alert.read and alert.ack in permissions.yaml: the same three roles. */
   ackAlert: (r: Role) => r === 'analyst' || r === 'supervisor' || r === 'centre_lead',
+  /** case.assign in permissions.yaml: keeping mission templates and choosing a case's mission (E29). */
+  manageMissions: (r: Role) => r === 'supervisor' || r === 'centre_lead',
+  /** case.read in permissions.yaml: the mission templates themselves. */
+  readMissions: (r: Role) =>
+    r === 'analyst' ||
+    r === 'supervisor' ||
+    r === 'reviewer' ||
+    r === 'centre_lead' ||
+    r === 'evidence_officer',
   /** roster.manage in permissions.yaml. */
   manageRoster: (r: Role) => r === 'supervisor' || r === 'centre_lead',
   changePolicy: (r: Role) => r === 'admin' || r === 'centre_lead',
   viewAudit: (r: Role) => r === 'admin' || r === 'centre_lead' || r === 'supervisor',
+  /** cctv.request in permissions.yaml: drafting and submitting CCTV requests (E31). */
+  requestCctv: (r: Role) => r === 'analyst' || r === 'supervisor',
+  /** search.names in permissions.yaml: asking for name searches, and a public figure's results (E30). */
+  searchNames: (r: Role) => r === 'analyst' || r === 'supervisor',
+  /** search.pi in permissions.yaml: a private individual's results, while pi_search is on (ADR 0013). */
+  readPiResults: (r: Role) => r === 'centre_lead',
 }

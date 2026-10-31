@@ -2,27 +2,21 @@ import { Link } from '@tanstack/react-router'
 import {
   ArrowLeft,
   Brain,
-  Check,
-  ClipboardList,
   FileSearch,
   Flag,
   GitCommitVertical,
-  ListChecks,
   MessageSquareText,
-  Send,
   Stamp,
   UserPlus,
   type LucideIcon,
 } from 'lucide-react'
-import { ApiError, describeError } from '@/api'
-import { useCase, useCaseAction, useCaseMedia, useSubmitCase } from '@/api/queries'
+import { ApiError } from '@/api'
+import { useCase, useCaseMedia } from '@/api/queries'
 import type { CaseDetail, EvidenceItem, TimelineEntry } from '@/api/types'
 import { can, useAuth } from '@/auth/AuthProvider'
 import { StateStepper } from '@/components/StateStepper'
-import { useToast } from '@/components/Toaster'
 import {
   Avatar,
-  Button,
   CaseStateBadge,
   EmptyState,
   ErrorNotice,
@@ -42,7 +36,6 @@ import {
   FindingsPanel,
   StatementsPanel,
   SummaryPanel,
-  useAssessmentAccess,
 } from './Assessment'
 import { shortId } from '@/api/adapters'
 import { AddEvidence } from './AddEvidence'
@@ -50,6 +43,7 @@ import { EvidenceList } from './EvidenceList'
 import { MatrixPanel } from './MatrixPanel'
 import { ScreeningBadge } from './MediaViewer'
 import { CaseBriefsPanel } from '@/features/briefs/CaseBriefsPanel'
+import { ChecklistPanel } from './ChecklistPanel'
 
 const timelineIcon: Record<TimelineEntry['kind'], { icon: LucideIcon; cls: string }> = {
   state: { icon: GitCommitVertical, cls: 'text-cyan bg-cyan/10 ring-cyan/30' },
@@ -294,120 +288,6 @@ function EvidencePanel({
         <EmptyState icon={FileSearch} title="No evidence attached yet" />
       ) : (
         <EvidenceList evidence={evidence} screenings={media.data} />
-      )}
-    </Panel>
-  )
-}
-
-function ChecklistPanel({ c }: { c: CaseDetail }) {
-  const submit = useSubmitCase(c.id)
-  const tick = useCaseAction(c.id)
-  const { canEdit } = useAssessmentAccess(c)
-  // The checklist is the analyst's own record; the server keeps it fixed once released or closed.
-  const canTick = canEdit && c.checklist.every((i) => i.key)
-  const toast = useToast()
-  const done = c.checklist.filter((i) => i.done).length
-  const complete = done === c.checklist.length
-  const canSubmit = c.state === 'in_assessment' || c.state === 'returned' || c.state === 'open'
-
-  return (
-    <Panel
-      title="Mission checklist"
-      icon={ListChecks}
-      actions={
-        <span
-          className={cn(
-            'num text-[11.5px] font-semibold',
-            complete ? 'text-green' : 'text-ink-muted',
-          )}
-        >
-          {done}/{c.checklist.length}
-        </span>
-      }
-    >
-      <div className="mb-3 h-1.5 overflow-hidden rounded-full bg-tint/[0.06]">
-        <div
-          className={cn(
-            'h-full rounded-full transition-[width] duration-700',
-            complete ? 'bg-green' : 'bg-cyan',
-          )}
-          style={{ width: `${(done / Math.max(1, c.checklist.length)) * 100}%` }}
-        />
-      </div>
-      <ul className="space-y-1">
-        {c.checklist.map((item) => {
-          const key = item.key ?? item.label
-          return (
-            <li key={key}>
-              <button
-                type="button"
-                role="checkbox"
-                aria-checked={item.done}
-                disabled={!canTick || tick.isPending}
-                onClick={() =>
-                  tick.mutate(
-                    { kind: 'checklist', key, done: !item.done },
-                    {
-                      onError: (e) =>
-                        toast({ title: 'Not saved', detail: describeError(e), tone: 'error' }),
-                    },
-                  )
-                }
-                className={cn(
-                  '-mx-1.5 flex w-[calc(100%+0.75rem)] items-start gap-2.5 rounded-md px-1.5 py-1 text-left text-[12.5px] transition-colors',
-                  canTick ? 'hover:bg-tint/[0.03]' : 'cursor-default',
-                )}
-              >
-                <span
-                  className={cn(
-                    'mt-px grid size-4 shrink-0 place-items-center rounded-[4px] ring-1 ring-inset',
-                    item.done
-                      ? 'bg-green/15 text-green ring-green/40'
-                      : 'text-transparent ring-line-strong',
-                  )}
-                  aria-hidden
-                >
-                  <Check size={11} strokeWidth={3} />
-                </span>
-                <span className={item.done ? 'text-ink-2' : 'text-ink-muted'}>{item.label}</span>
-              </button>
-            </li>
-          )
-        })}
-      </ul>
-      {canSubmit ? (
-        <div className="mt-4 border-t border-line-soft pt-4">
-          <Button
-            variant={complete ? 'primary' : 'secondary'}
-            size="md"
-            icon={Send}
-            className="w-full"
-            loading={submit.isPending}
-            onClick={() =>
-              submit.mutate(c.etag, {
-                onSuccess: () =>
-                  toast({
-                    title: `${c.ref} submitted for review`,
-                    detail: 'A CASE_REVIEW approval was created.',
-                    tone: 'success',
-                  }),
-                onError: (e) =>
-                  toast({ title: 'Not submitted', detail: describeError(e), tone: 'error' }),
-              })
-            }
-          >
-            Submit for review
-          </Button>
-          <p className="mt-2 text-[11px] leading-relaxed text-ink-faint">
-            Submit needs a complete checklist and at least one finding, each citing an original or a
-            statement. The reviewer must not be the author.
-          </p>
-        </div>
-      ) : (
-        <p className="mt-4 flex items-center gap-2 border-t border-line-soft pt-3 text-[11.5px] text-ink-faint">
-          <ClipboardList size={13} />{' '}
-          {c.state === 'submitted' ? 'Awaiting review.' : 'No submission available in this state.'}
-        </p>
       )}
     </Panel>
   )

@@ -10,7 +10,7 @@ import {
 } from 'lucide-react'
 import { useState } from 'react'
 import { describeError } from '@/api'
-import { usePromoteTriage, useTriage } from '@/api/queries'
+import { useMissionTemplates, usePromoteTriage, useTriage } from '@/api/queries'
 import { ROLE_LABEL, type Priority, type TriageItem, type TriageStatus } from '@/api/types'
 import { can, useAuth } from '@/auth/AuthProvider'
 import { useToast } from '@/components/Toaster'
@@ -206,7 +206,11 @@ function PromotePanel({ item }: { item: TriageItem }) {
   const [title, setTitle] = useState(item.headline)
   const [priority, setPriority] = useState<Priority>('medium')
   const [deadline, setDeadline] = useState(dateInDays(7))
+  const [category, setCategory] = useState('')
   const allowed = can.workTriage(activeRole)
+  // The category decides the case's mission template (E29); offer the ones templates cover.
+  const templates = useMissionTemplates(false, allowed)
+  const categories = (templates.data ?? []).flatMap((t) => t.categories)
   const titleMissing = title.trim().length === 0
   const ready = allowed && !!user && !titleMissing && !!deadline
 
@@ -221,6 +225,7 @@ function PromotePanel({ item }: { item: TriageItem }) {
           ownerId: user.id,
           priority,
           deadline: new Date(`${deadline}T23:59:00`).toISOString(),
+          category: category.trim() || undefined,
         },
       },
       {
@@ -286,6 +291,25 @@ function PromotePanel({ item }: { item: TriageItem }) {
             />
           </Field>
         </div>
+        <Field
+          label="Category"
+          hint="Decides the mission checklist. Leave blank for the standard one."
+        >
+          <input
+            value={category}
+            onChange={(e) => setCategory(e.target.value)}
+            disabled={!allowed || promote.isPending}
+            maxLength={100}
+            list="promote-categories"
+            placeholder="e.g. Civil unrest"
+            className={inputClass}
+          />
+          <datalist id="promote-categories">
+            {categories.map((c) => (
+              <option key={c} value={c} />
+            ))}
+          </datalist>
+        </Field>
         <div>
           <span className="eyebrow mb-1.5 block">Owner</span>
           <span className="flex items-center gap-2 text-[12.5px] text-ink-2">

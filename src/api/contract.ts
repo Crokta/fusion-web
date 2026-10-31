@@ -1,9 +1,20 @@
 import type {
   Alert,
+  NameCluster,
+  NameMention,
+  NameReportData,
+  NameSearch,
+  NameSearchInput,
+  MissionTemplate,
+  MissionTemplateInput,
   Brief,
   BriefSentence,
   CaptureRequest,
   CaseMatrix,
+  CctvRequest,
+  CctvRequestInput,
+  CctvRequestStatus,
+  LawfulBasisOption,
   SupportCheck,
   Approval,
   AuditEvent,
@@ -42,6 +53,8 @@ import type {
   TriageItem,
   TriageStatus,
   WallContentKey,
+  WallControllerStatus,
+  WallLayoutPublication,
   WallPreset,
   WallPresetKey,
   WallPublication,
@@ -126,7 +139,8 @@ export interface FusionApi {
   cases(params?: { state?: CaseState | 'active'; q?: string }): Promise<Page<CaseSummary>>
   case(id: string): Promise<CaseDetail>
   submitCase(id: string, etag: string): Promise<CaseDetail>
-  setChecklistItem(id: string, key: string, done: boolean): Promise<CaseDetail>
+  /** `note` undefined leaves the line's note as it is; an empty string clears it. */
+  setChecklistItem(id: string, key: string, done: boolean, note?: string): Promise<CaseDetail>
 
   // Assessment: each answers with the whole case, so the page redraws from one response.
   setCaseSummary(id: string, summary: string): Promise<CaseDetail>
@@ -183,4 +197,47 @@ export interface FusionApi {
     note?: string
   }): Promise<WallPublication>
   decidePublication(id: string, decision: 'approve' | 'reject'): Promise<WallPublication>
+  /** Saves the wall's current layout as a preset (wall.operate). */
+  saveWallPreset(input: { name: string; description?: string }): Promise<WallPreset>
+  deleteWallPreset(key: WallPresetKey): Promise<void>
+  /** Sends the stored layout at this revision to the wall controller (wall.operate, If-Match). */
+  publishWallLayout(revision: number): Promise<WallLayoutPublication>
+  wallLayoutPublications(): Promise<WallLayoutPublication[]>
+  wallController(): Promise<WallControllerStatus>
+
+  // CCTV requests (E31, ADR 0014): drafts, then governance's CCTV_SEARCH gate.
+  cctvRequests(params?: { status?: CctvRequestStatus }): Promise<Page<CctvRequest>>
+  /** The request and, once submitted, its approval with each step's decision. */
+  cctvRequest(id: string): Promise<{ request: CctvRequest; approval?: Approval }>
+  createCctvRequest(caseId: string, input: CctvRequestInput): Promise<CctvRequest>
+  editCctvRequest(id: string, input: CctvRequestInput, etag: string): Promise<CctvRequest>
+  submitCctvRequest(id: string, etag: string): Promise<CctvRequest>
+  cctvCameras(): Promise<string[]>
+  cctvLawfulBases(): Promise<LawfulBasisOption[]>
+
+  // Mission templates and case missions (E29, ADR 0012). Keeping templates and choosing a
+  // case's mission are case.assign; reading them is case.read.
+  missionTemplates(params?: { retired?: boolean }): Promise<MissionTemplate[]>
+  createMissionTemplate(input: MissionTemplateInput): Promise<MissionTemplate>
+  /** Saves the next version; cases already using an earlier one keep their copy. */
+  reviseMissionTemplate(
+    key: string,
+    input: MissionTemplateInput,
+    etag: string,
+  ): Promise<MissionTemplate>
+  retireMissionTemplate(key: string, etag: string): Promise<MissionTemplate>
+  applyCaseMission(caseId: string, templateKey: string): Promise<CaseDetail>
+  setCaseCategory(caseId: string, category: string): Promise<CaseDetail>
+
+  // Name-of-interest searches (E30, ADR 0013). Asking is search.names; a public figure's results
+  // are search.names, a private individual's search.pi with the pi_search policy on.
+  nameSearches(): Promise<Page<NameSearch>>
+  nameSearch(id: string): Promise<NameSearch>
+  startNameSearch(input: NameSearchInput): Promise<NameSearch>
+  nameMentions(id: string, params?: { clusterId?: string }): Promise<Page<NameMention>>
+  nameClusters(id: string): Promise<NameCluster[]>
+  decideNameCluster(id: string, clusterId: string, confirmed: boolean): Promise<NameCluster>
+  /** The newest snapshot, or null when none has been taken. */
+  nameReportData(id: string): Promise<NameReportData | null>
+  takeNameReportData(id: string): Promise<NameReportData>
 }

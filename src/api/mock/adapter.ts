@@ -1,12 +1,16 @@
 import type { FusionApi } from '../contract'
 import { ApiError, type ProblemCode } from '../problem'
 import { session } from '../session'
-import { alertReference } from '../adapters'
+import { alertReference, cctvRefusalText } from '../adapters'
 import type {
+  MissionTemplate,
+  MissionTemplateInput,
   Alert,
   Brief,
   CaptureRequest,
   CaseMatrix,
+  CctvRequest,
+  CctvRequestInput,
   EvidenceItem,
   MatrixFlag,
   Delivery,
@@ -25,9 +29,13 @@ import type {
   SourceImportResult,
   SourceRecord,
   StoryGroup,
+  WallControllerStatus,
+  WallLayoutPublication,
+  WallPreset,
   WallState,
 } from '../types'
 import * as fx from './fixtures'
+import { nameMocks } from './names'
 
 /**
  * In-memory gateway. It keeps the same rules the real services enforce — reviewer is not the
@@ -113,12 +121,24 @@ const db = {
   audit: clone(fx.auditEvents),
   publications: clone(fx.wallPublications),
   wall: fx.stateFromPreset(fx.wallPresets[0]!, 16, 'Zainab Bello'),
+  /** Stored presets (E33): the standard four, then those saved in this session. */
+  presets: clone(fx.wallPresets) as WallPreset[],
+  layoutPublications: [] as WallLayoutPublication[],
+  /** The simulated wall controller, as reporting's simulator keeps it (ADR 0015). */
+  controller: {
+    adapter: 'simulator',
+    online: true,
+    inputsMuted: false,
+    routes: [],
+    log: [],
+  } as WallControllerStatus,
   signals: 0,
   /** Evidence added in this session (E26), per case, laid over the fixture's. */
   added: new Map<string, EvidenceItem[]>(),
   /** The uploaded files themselves, for the working copy. */
   files: new Map<string, { url: string; contentType: string; size: number; name: string }>(),
   captures: [] as CaptureRequest[],
+  cctv: [] as CctvRequest[],
 }
 
 /**
@@ -365,6 +385,7 @@ function liveCase(id: string): CaseDetail {
     ...db.assessment.get(base.id),
     evidence: [...base.evidence, ...(db.added.get(base.id) ?? [])],
     state: live?.state ?? base.state,
+    category: live?.category ?? base.category,
   }
 }
 
@@ -396,6 +417,23 @@ function bumpWall(next: WallState): WallState {
   }
   mockBus.emit('wall.state', clone(db.wall))
   return db.wall
+}
+
+/** A preset key from its name, as reporting makes it: "Night shift (north)" → night-shift-north. */
+const presetKey = (name: string) =>
+  name
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 50)
+    .replace(/-+$/, '')
+
+function controllerNote(command: string, detail: string) {
+  db.controller.log = [
+    { at: new Date().toISOString(), command, detail, accepted: true },
+    ...db.controller.log,
+  ].slice(0, 50)
 }
 
 // ---------------------------------------------------------------- simulated signals
@@ -466,7 +504,97 @@ export function simulateShareRequest() {
 
 // ---------------------------------------------------------------- adapter
 
+// ---------------------------------------------------------------- CCTV requests (E31, ADR 0014)
+
+const CCTV_CAMERAS = ['cam-kawo-01', 'cam-kawo-02', 'cam-ikeja-01', 'cam-ikeja-02', 'cam-ikeja-03']
+const LAWFUL_BASES = [
+  { code: 'prevention_of_crime', label: 'Prevention or detection of crime' },
+  { code: 'national_security', label: 'National security' },
+  { code: 'protection_of_life', label: 'Protection of life' },
+  { code: 'public_safety', label: 'Public safety' },
+]
+const FACE_WORDS = ['face', 'facial', 'biometric', 'iris', 'faceprint']
+
+function cctvFieldErrors(input: CctvRequestInput, complete: boolean): Record<string, string[]> {
+  const errors: Record<string, string[]> = {}
+  const add = (field: string, message: string) => (errors[field] ??= []).push(message)
+  const start = input.windowStart ? Date.parse(input.windowStart) : undefined
+  const end = input.windowEnd ? Date.parse(input.windowEnd) : undefined
+  if (start !== undefined && end !== undefined) {
+    if (end <= start) add('windowEnd', 'The window must end after it starts.')
+    else if (end - start > 24 * 3600_000) add('windowEnd', 'The window may be at most 24 hours.')
+  }
+  if (input.attributes.some((a) => FACE_WORDS.some((w) => a.toLowerCase().includes(w))))
+    add('attributes', 'Facial or biometric attributes cannot be searched.')
+  if (!complete) return errors
+  if (start === undefined) add('windowStart', 'Say when the window starts.')
+  if (end === undefined) add('windowEnd', 'Say when the window ends.')
+  if (input.cameras.length === 0) add('cameras', 'Name at least one camera.')
+  if (!input.lawfulBasis) add('lawfulBasis', 'Choose the lawful basis for the search.')
+  if ((input.reason ?? '').trim().length < 20)
+    add('reason', 'Say why the footage is needed, in at least 20 characters.')
+  return errors
+}
+
+function cctvInvalid(errors: Record<string, string[]>): void {
+  if (Object.keys(errors).length === 0) return
+  audit('refused', 'cctv.request', 'validation_failed')
+  throw new ApiError({
+    title: 'Some fields need attention.',
+    status: 400,
+    code: 'validation_failed',
+    errors,
+    traceId: crypto.randomUUID(),
+  })
+}
+
+function cctvGate(action: string) {
+  requireRole(['analyst', 'supervisor'], 'Requesting CCTV footage')
+  if (!db.policies.find((p) => p.key === 'cctv_search_enabled')?.value)
+    refuse('capability_not_authorised', 'CCTV search is switched off by policy.', 403, action)
+}
+
+function cctvBump(r: CctvRequest) {
+  r.etag = `"v${Number(r.etag.slice(2, -1)) + 1}"`
+}
+
+function ownCctv(id: string, etag?: string): CctvRequest {
+  const r = db.cctv.find((x) => x.id === id)
+  const role = session.getActiveRole()
+  if (!r || (r.requesterId !== me().id && role !== 'supervisor'))
+    refuse('not_found', 'Request not found', 404)
+  if (r.requesterId !== me().id)
+    refuse('forbidden', 'Only the analyst who drafted a request can change or submit it.')
+  if (etag && etag !== r.etag)
+    refuse('precondition_failed', 'This changed since you loaded it.', 412)
+  return r
+}
+
+/** governance's ApprovalCompleted, as cctv's consumer applies it. */
+function settleCctv(approvalId: string, status: string) {
+  const r = db.cctv.find((x) => x.approvalId === approvalId)
+  if (!r || r.status !== 'awaiting_approval') return
+  if (status === 'approved') r.status = 'approved'
+  else if (status === 'refused') {
+    r.status = 'refused'
+    r.refusalCode = 'approver_refused'
+    r.refusal = cctvRefusalText('approver_refused')
+  } else return
+  r.decidedAt = new Date().toISOString()
+  cctvBump(r)
+}
+
 export const mockApi: FusionApi = {
+  // Name-of-interest searches (E30, ADR 0013).
+  ...nameMocks({
+    delay,
+    refuse,
+    requireRole,
+    audit,
+    role: () => session.getActiveRole(),
+    me,
+    piOn: () => !!db.policies.find((p) => p.key === 'pi_search_enabled')?.value,
+  }),
   me: () =>
     delay<Me>(() => ({
       id: fx.DEV_USER_ID,
@@ -1048,10 +1176,24 @@ export const mockApi: FusionApi = {
       return { items, nextCursor: null, total: items.length }
     }),
   case: (id) => delay(() => liveCase(id)),
-  setChecklistItem: (id, key, done) =>
+  setChecklistItem: (id, key, done, note) =>
     delay(() =>
       assess(id, 'case.checklist', (c) => ({
-        checklist: c.checklist.map((i) => ((i.key ?? i.label) === key ? { ...i, done } : i)),
+        checklist: c.checklist.map((i) =>
+          (i.key ?? i.label) === key
+            ? {
+                ...i,
+                done,
+                doneBy: done ? devName() : undefined,
+                ...(note === undefined
+                  ? {}
+                  : {
+                      note: note.trim() || undefined,
+                      noteBy: note.trim() ? devName() : undefined,
+                    }),
+              }
+            : i,
+        ),
       })),
     ),
   setCaseSummary: (id, summary) =>
@@ -1200,12 +1342,14 @@ export const mockApi: FusionApi = {
       const c = db.cases.find((x) => x.id === id)
       if (!c) refuse('not_found', 'Case not found', 404)
       const detail = fx.caseDetail(id)!
-      if (detail.checklist.some((i) => !i.done))
+      // Optional lines never hold up Submit (E29, ADR 0012).
+      const open = liveCase(id).checklist.filter((i) => !i.done && i.required !== false)
+      if (open.length > 0)
         refuse(
           'requirement_missing',
           'Mission checklist incomplete',
-          422,
-          'Submit requires a complete mission checklist and statements.',
+          403,
+          `The mission checklist has required lines open: ${open.map((i) => i.label).join('; ')}.`,
         )
       c.state = 'submitted'
       audit('allowed', 'case.submit', c.ref)
@@ -1336,8 +1480,10 @@ export const mockApi: FusionApi = {
       step.decision = decision
       step.decidedBy = devName()
       step.decidedAt = new Date().toISOString()
+      step.comment = comment || undefined
       if (decision === 'refuse') a.status = 'refused'
       else if (a.steps.every((s) => s.decision === 'approve')) a.status = 'approved'
+      settleCctv(a.id, a.status)
       audit('allowed', 'approval.decide', `${a.id.toUpperCase()} ${a.type}`, comment)
       return a
     }),
@@ -1476,10 +1622,10 @@ export const mockApi: FusionApi = {
       else audit('allowed', 'wall.layout', `revision ${state.revision + 1}`)
       return bumpWall(state)
     }),
-  wallPresets: () => delay(() => fx.wallPresets),
+  wallPresets: () => delay(() => db.presets),
   activatePreset: (key) =>
     delay(() => {
-      const preset = fx.wallPresets.find((p) => p.key === key)
+      const preset = db.presets.find((p) => p.key === key)
       if (!preset) refuse('not_found', 'Preset not found', 404)
       const next = fx.stateFromPreset(preset, db.wall.revision, devName())
       audit('allowed', 'wall.preset.activate', key)
@@ -1523,4 +1669,326 @@ export const mockApi: FusionApi = {
       audit('allowed', 'wall.publication.decide', `${pub.ref} ${decision}`)
       return pub
     }),
+  saveWallPreset: (input) =>
+    delay(() => {
+      requireRole(['supervisor', 'centre_lead'], 'Saving a wall preset')
+      const key = presetKey(input.name)
+      if (!key || key === 'custom') refuse('validation_failed', 'Choose another name.', 400)
+      if (db.presets.some((p) => p.key === key))
+        refuse('preset_exists', `A preset called “${input.name}” already exists.`, 409)
+      const preset: WallPreset = {
+        key,
+        name: input.name.trim(),
+        description: input.description?.trim() ?? '',
+        screens: db.wall.screens.map((s) => s.content),
+        groups: db.wall.groups.map((g) => ({ cells: g.cells, content: g.content })),
+        builtIn: false,
+        createdBy: devName(),
+      }
+      db.presets.push(preset)
+      audit('allowed', 'wall.preset.save', key)
+      return preset
+    }),
+  deleteWallPreset: (key) =>
+    delay(() => {
+      requireRole(['supervisor', 'centre_lead'], 'Deleting a wall preset')
+      const preset = db.presets.find((p) => p.key === key)
+      if (!preset) refuse('not_found', 'Preset not found', 404)
+      if (preset.builtIn) refuse('preset_built_in', 'The standard presets cannot be deleted.', 409)
+      db.presets = db.presets.filter((p) => p.key !== key)
+      audit('allowed', 'wall.preset.delete', key)
+      if (db.wall.preset === key) bumpWall({ ...db.wall, preset: 'custom' })
+    }),
+  publishWallLayout: (revision) =>
+    delay(() => {
+      requireRole(['supervisor', 'centre_lead'], 'Publishing to the wall')
+      if (revision !== db.wall.revision)
+        refuse('precondition_failed', 'Wall state changed since you loaded it', 412)
+      const n = db.layoutPublications.length + 1
+      const publication: WallLayoutPublication = {
+        id: `wl-${n}`,
+        ref: `WL-${String(4100 + n)}`,
+        revision: db.wall.revision,
+        preset: db.wall.preset,
+        screens: clone(db.wall.screens),
+        groups: clone(db.wall.groups),
+        visitorMode: db.wall.visitorMode,
+        adapter: 'simulator',
+        publishedBy: devName(),
+        publishedAt: new Date().toISOString(),
+        delivered: true,
+      }
+      db.layoutPublications.unshift(publication)
+      db.controller = {
+        ...db.controller,
+        inputsMuted: publication.visitorMode,
+        routes: publication.visitorMode ? [] : db.controller.routes,
+        layout: {
+          publicationId: publication.id,
+          publicationRef: publication.ref,
+          preset: publication.preset,
+          revision: publication.revision,
+          screens: publication.screens,
+          groups: publication.groups,
+        },
+        layoutActivatedAt: publication.publishedAt,
+      }
+      controllerNote(
+        'activate-layout',
+        `${publication.ref} · ${publication.preset} · v${publication.revision}`,
+      )
+      db.wall = {
+        ...db.wall,
+        published: {
+          id: publication.id,
+          ref: publication.ref,
+          revision: publication.revision,
+          preset: publication.preset,
+          publishedBy: publication.publishedBy,
+          publishedAt: publication.publishedAt,
+        },
+      }
+      audit('allowed', 'wall.layout.publish', publication.ref)
+      mockBus.emit('wall.state', clone(db.wall))
+      return publication
+    }),
+  wallLayoutPublications: () => delay(() => db.layoutPublications),
+  wallController: () => delay(() => db.controller),
+
+  cctvRequests: (p) =>
+    delay(() => {
+      requireRole(['analyst', 'supervisor'], 'Requesting CCTV footage')
+      const all = session.getActiveRole() === 'supervisor'
+      const items = db.cctv
+        .filter((r) => all || r.requesterId === me().id)
+        .filter((r) => !p?.status || r.status === p.status)
+        .sort((x, y) => y.requestedAt.localeCompare(x.requestedAt))
+      return { items, nextCursor: null }
+    }),
+  cctvRequest: (id) =>
+    delay(() => {
+      requireRole(['analyst', 'supervisor'], 'Requesting CCTV footage')
+      const r = db.cctv.find((x) => x.id === id)
+      if (!r || (r.requesterId !== me().id && session.getActiveRole() !== 'supervisor'))
+        refuse('not_found', 'Request not found', 404)
+      return { request: r, approval: db.approvals.find((a) => a.id === r.approvalId) }
+    }),
+  createCctvRequest: (caseId, input) =>
+    delay(() => {
+      cctvGate('cctv.request.create')
+      cctvInvalid(cctvFieldErrors(input, false))
+      const c = db.cases.find((x) => x.id === caseId)
+      if (!c) refuse('validation_failed', 'Choose a case', 400)
+      const r: CctvRequest = {
+        ...input,
+        id: `cctv-${crypto.randomUUID().slice(0, 8)}`,
+        caseId,
+        caseRef: c.ref,
+        status: 'draft',
+        requesterId: me().id,
+        requesterName: devName(),
+        requestedAt: new Date().toISOString(),
+        etag: '"v1"',
+      }
+      db.cctv.push(r)
+      audit('allowed', 'cctv.request.create', `${c.ref} · draft`)
+      return r
+    }),
+  editCctvRequest: (id, input, etag) =>
+    delay(() => {
+      const r = ownCctv(id, etag)
+      cctvGate('cctv.request.edit')
+      if (r.status !== 'draft') refuse('conflict', 'Only a draft can be changed.', 409)
+      cctvInvalid(cctvFieldErrors(input, false))
+      Object.assign(r, input)
+      cctvBump(r)
+      audit('allowed', 'cctv.request.edit', `${r.caseRef} · draft`)
+      return r
+    }),
+  submitCctvRequest: (id, etag) =>
+    delay(() => {
+      const r = ownCctv(id, etag)
+      if (r.status !== 'draft') refuse('conflict', `This request is already ${r.status}.`, 409)
+      if (!db.policies.find((p) => p.key === 'cctv_search_enabled')?.value) {
+        Object.assign(r, {
+          status: 'refused',
+          refusalCode: 'capability_not_authorised',
+          refusal: cctvRefusalText('capability_not_authorised'),
+          decidedAt: new Date().toISOString(),
+        })
+        cctvBump(r)
+        refuse('capability_not_authorised', 'CCTV search is switched off by policy.')
+      }
+      cctvInvalid(cctvFieldErrors(r, true))
+      const basis = LAWFUL_BASES.find((b) => b.code === r.lawfulBasis)?.label ?? ''
+      const approvalId = `ap-${crypto.randomUUID().slice(0, 6)}`
+      db.approvals.unshift({
+        id: approvalId,
+        type: 'CCTV_SEARCH',
+        subject: `${r.cameras.join(', ')} · ${r.location ?? 'CCTV'}`,
+        justification: `${basis}${r.legalReference ? ` (${r.legalReference})` : ''}: ${r.reason}`,
+        requesterId: r.requesterId,
+        requesterName: r.requesterName,
+        requestedAt: new Date().toISOString(),
+        status: 'pending',
+        steps: [{ role: 'centre_lead' }, { role: 'evidence_officer' }],
+        caseRef: r.caseRef,
+        scope: `≤ 24 h window · ${r.cameras.length} camera${r.cameras.length === 1 ? '' : 's'}`,
+      })
+      Object.assign(r, {
+        status: 'awaiting_approval',
+        approvalId,
+        submittedAt: new Date().toISOString(),
+      })
+      cctvBump(r)
+      audit('allowed', 'cctv.request.submit', `${r.caseRef} · ${approvalId.toUpperCase()}`)
+      return r
+    }),
+  cctvCameras: () => delay(() => CCTV_CAMERAS),
+  cctvLawfulBases: () => delay(() => LAWFUL_BASES),
+
+  // Missions (E29, ADR 0012): the same rules as casework.
+  missionTemplates: (p) =>
+    delay(() => {
+      requireRole(MISSION_READERS, 'Reading mission templates')
+      return missions.filter((t) => p?.retired || !t.retired)
+    }),
+  createMissionTemplate: (input) =>
+    delay(() => {
+      requireRole(['supervisor', 'centre_lead'], 'Keeping mission templates')
+      if (!input.key || missions.some((t) => t.key === input.key))
+        refuse('conflict', 'A template with this key already exists.', 409)
+      missionCategoriesFree(input.categories, input.key)
+      const t = missionVersion(
+        { key: input.key, currentVersion: 0, retired: false, isDefault: false, versions: [] },
+        input,
+      )
+      missions.push(t)
+      audit('allowed', 'mission.create', t.key)
+      return t
+    }),
+  reviseMissionTemplate: (key, input, etag) =>
+    delay(() => {
+      requireRole(['supervisor', 'centre_lead'], 'Keeping mission templates')
+      const at = missions.findIndex((t) => t.key === key)
+      if (at < 0) refuse('not_found', 'No such mission template.', 404)
+      const t = missions[at]!
+      if (t.etag !== etag) refuse('precondition_failed', 'This changed since you loaded it.', 412)
+      if (t.retired) refuse('conflict', 'A retired template cannot be changed.', 409)
+      missionCategoriesFree(input.categories, key)
+      missions[at] = missionVersion(t, input)
+      audit('allowed', 'mission.revise', key)
+      return missions[at]
+    }),
+  retireMissionTemplate: (key, etag) =>
+    delay(() => {
+      requireRole(['supervisor', 'centre_lead'], 'Keeping mission templates')
+      const t = missions.find((x) => x.key === key)
+      if (!t) refuse('not_found', 'No such mission template.', 404)
+      if (t.etag !== etag) refuse('precondition_failed', 'This changed since you loaded it.', 412)
+      if (t.isDefault) refuse('conflict', 'The default template cannot be retired.', 409)
+      t.retired = true
+      t.categories = []
+      t.etag = `"v${Number(t.etag.slice(2, -1)) + 1}"`
+      audit('allowed', 'mission.retire', key)
+      return t
+    }),
+  applyCaseMission: (caseId, templateKey) =>
+    delay(() => {
+      requireRole(['supervisor', 'centre_lead'], "Choosing a case's mission")
+      const t = missions.find((x) => x.key === templateKey && !x.retired)
+      if (!t) refuse('not_found', 'No such mission template.', 404)
+      return applyMission(caseId, t)
+    }),
+  setCaseCategory: (caseId, category) =>
+    delay(() => {
+      requireRole(['supervisor', 'centre_lead'], "Setting a case's category")
+      const c = db.cases.find((x) => x.id === caseId)
+      if (!c) refuse('not_found', 'Case not found', 404)
+      c.category = category.trim() || 'Unclassified'
+      const t = missions.find(
+        (x) => !x.retired && x.categories.some((k) => k.toLowerCase() === c.category.toLowerCase()),
+      )
+      const live = liveCase(caseId)
+      if (t && ['triage', 'open', 'in_assessment', 'returned'].includes(live.state))
+        return applyMission(caseId, t)
+      audit('allowed', 'case.category', c.ref)
+      return liveCase(caseId)
+    }),
+}
+
+// ---------------------------------------------------------------- missions (E29, ADR 0012)
+
+const MISSION_READERS: Role[] = [
+  'analyst',
+  'supervisor',
+  'reviewer',
+  'centre_lead',
+  'evidence_officer',
+]
+
+const missions: MissionTemplate[] = fx.missionTemplates.map((t) => clone(t))
+
+function missionCategoriesFree(categories: string[], self: string | undefined) {
+  for (const category of categories) {
+    const holder = missions.find(
+      (t) =>
+        t.key !== self &&
+        !t.retired &&
+        t.categories.some((k) => k.toLowerCase() === category.trim().toLowerCase()),
+    )
+    if (holder)
+      refuse(
+        'category_taken',
+        `'${category.trim()}' is already covered by the template '${holder.name}'.`,
+        409,
+      )
+  }
+}
+
+function missionVersion(
+  t: Pick<MissionTemplate, 'key' | 'currentVersion' | 'retired' | 'isDefault' | 'versions'>,
+  input: MissionTemplateInput,
+): MissionTemplate {
+  const number = t.currentVersion + 1
+  const items = input.items.filter((i) => i.label.trim())
+  const now = new Date().toISOString()
+  return {
+    key: t.key,
+    name: input.name.trim(),
+    description: input.description.trim(),
+    categories: input.categories.map((c) => c.trim()).filter(Boolean),
+    currentVersion: number,
+    retired: t.retired,
+    isDefault: t.isDefault,
+    items,
+    versions: [
+      { number, name: input.name.trim(), items, createdBy: devName(), createdAt: now },
+      ...t.versions,
+    ],
+    updatedBy: devName(),
+    updatedAt: now,
+    etag: `"v${number}"`,
+  }
+}
+
+/** Copies the template's current version; lines both share keep their ticks and notes. */
+function applyMission(caseId: string, t: MissionTemplate): CaseDetail {
+  requireRole(['supervisor', 'centre_lead'], "Choosing a case's mission")
+  const c = liveCase(caseId)
+  if (!['triage', 'open', 'in_assessment', 'returned'].includes(c.state))
+    refuse('conflict', `A ${c.state.replace('_', ' ')} case's mission is fixed.`, 409)
+  const kept = new Map(c.checklist.map((i) => [i.key ?? i.label, i]))
+  db.assessment.set(c.id, {
+    ...db.assessment.get(c.id),
+    checklist: t.items.map((line) => ({
+      ...(kept.get(line.key) ?? { done: false }),
+      key: line.key,
+      label: line.label,
+      required: line.required,
+    })),
+    mission: { templateKey: t.key, version: t.currentVersion, name: t.name },
+  })
+  audit('allowed', 'case.mission', c.ref)
+  return liveCase(caseId)
 }

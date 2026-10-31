@@ -6,6 +6,7 @@ import {
   FileText,
   FolderKanban,
   Inbox,
+  ListChecks,
   LayoutDashboard,
   MapPin,
   MonitorPlay,
@@ -20,6 +21,7 @@ import {
   Waypoints,
   type LucideIcon,
   CircleDollarSign,
+  Cctv,
 } from 'lucide-react'
 
 export interface NavItem {
@@ -57,6 +59,12 @@ export const NAV: NavGroup[] = [
         label: 'Duty roster',
         icon: CalendarClock,
         description: 'Who alerts go to at each tier, and when; escalation follows it.',
+      },
+      {
+        to: '/missions',
+        label: 'Mission templates',
+        icon: ListChecks,
+        description: 'The checklists cases work through, by category; every edit is a new version.',
       },
     ],
   },
@@ -114,9 +122,8 @@ export const NAV: NavGroup[] = [
         to: '/names',
         label: 'Names of Interest',
         icon: UserSearch,
-        soon: true,
         description:
-          'Monitored names with cluster confirmation. Private-individual searches need PI_SEARCH approval.',
+          'Name searches, their results grouped into clusters to confirm, and report data. A private individual’s needs the PI policy, PI_SEARCH approval and the centre lead role.',
       },
       {
         to: '/collection',
@@ -130,6 +137,13 @@ export const NAV: NavGroup[] = [
         icon: CircleDollarSign,
         description:
           'Credits spent on social sources and the Web Unlocker: the monthly cap, each source’s terms, blocked sites.',
+      },
+      {
+        to: '/cctv',
+        label: 'CCTV requests',
+        icon: Cctv,
+        description:
+          'Ask for CCTV footage on a case: a lawful basis, cameras and a window of at most 24 hours, approved by the Centre Lead and an Evidence Officer.',
       },
       {
         to: '/live-feeds',

@@ -1,11 +1,14 @@
+import { Link } from '@tanstack/react-router'
 import {
   Download,
   Eye,
   EyeOff,
   Grid2x2,
   Maximize2,
+  MonitorCheck,
   MonitorPlay,
   MonitorUp,
+  Radio,
   SquareSplitHorizontal,
   X,
 } from 'lucide-react'
@@ -15,14 +18,17 @@ import { simulateShareRequest } from '@/api/mock/adapter'
 import {
   useActivatePreset,
   useDecidePublication,
+  useDeleteWallPreset,
+  usePublishWallLayout,
   useRequestPublication,
+  useSaveWallPreset,
   useUpdateWall,
   useWallPresets,
   useWallPublications,
   useWallState,
 } from '@/api/queries'
 import { describeError } from '@/api/problem'
-import type { WallContentKey, WallPresetKey, WallState } from '@/api/types'
+import type { WallContentKey, WallPreset, WallPresetKey, WallState } from '@/api/types'
 import { can, useAuth } from '@/auth/AuthProvider'
 import { useToast } from '@/components/Toaster'
 import { Badge, Button, ErrorNotice, Kbd, PageHeader, Skeleton } from '@/components/ui'
@@ -43,6 +49,7 @@ import { OperationsPanel, RequestsPanel, SimulatorPanel, SupervisorConsole } fro
 import { FocusView, type FocusTarget } from './FocusView'
 import { PresentationView } from './PresentationView'
 import { PresetBar } from './PresetBar'
+import { SavePresetModal } from './SavePresetModal'
 import { SendContentModal, type SendInput } from './SendContentModal'
 import { WallGrid } from './WallGrid'
 
@@ -59,6 +66,9 @@ export function WallPage() {
   const activate = useActivatePreset()
   const request = useRequestPublication()
   const decide = useDecidePublication()
+  const publishLayout = usePublishWallLayout()
+  const savePreset = useSaveWallPreset()
+  const deletePreset = useDeleteWallPreset()
   const { activeRole } = useAuth()
   const live = useLive()
   const toast = useToast()
@@ -70,12 +80,15 @@ export function WallPage() {
   const [focus, setFocus] = useState<FocusTarget | null>(null)
   const [presenting, setPresenting] = useState(false)
   const [decidingId, setDecidingId] = useState<string>()
+  const [saveOpen, setSaveOpen] = useState(0)
   const flash = useFlash(wall.data)
   const frameRef = useRef<HTMLDivElement>(null)
 
   const state = wall.data
   const canPublish = can.publishToWall(activeRole)
   const pendingCount = publications.data?.filter((p) => p.status === 'pending').length ?? 0
+  // The planner edits the stored layout; the physical wall changes only on Publish (ADR 0015).
+  const unpublished = !!state && state.published?.revision !== state.revision
 
   const commit = useCallback(
     (next: WallState, message: string, detail?: string) => {
@@ -179,6 +192,39 @@ export function WallPage() {
     })
   }
 
+  const publish = () => {
+    if (!state || !guardPublish()) return
+    publishLayout.mutate(state.revision, {
+      onSuccess: (p) =>
+        toast({
+          title: `${p.ref} is on the wall`,
+          detail: `Revision ${p.revision} sent to the ${p.adapter} controller`,
+          tone: 'success',
+        }),
+      onError: (e) =>
+        toast({ title: 'Layout not published', detail: describeError(e), tone: 'error' }),
+    })
+  }
+
+  const saveAsPreset = (v: { name: string; description?: string }) =>
+    savePreset.mutate(v, {
+      onSuccess: (p) => {
+        setSaveOpen(0)
+        toast({ title: `Preset “${p.name}” saved`, tone: 'success' })
+      },
+      onError: (e) => toast({ title: 'Preset not saved', detail: describeError(e), tone: 'error' }),
+    })
+
+  const removePreset = (p: WallPreset) => {
+    if (!window.confirm(`Delete the preset “${p.name}”? The layout on the wall stays as it is.`))
+      return
+    deletePreset.mutate(p.key, {
+      onSuccess: () => toast({ title: `Preset “${p.name}” deleted`, tone: 'info' }),
+      onError: (e) =>
+        toast({ title: 'Preset not deleted', detail: describeError(e), tone: 'error' }),
+    })
+  }
+
   const toggleVisitor = () => {
     if (!state) return
     if (!can.publishToWall(activeRole))
@@ -217,7 +263,7 @@ export function WallPage() {
       tone: 'success',
     })
 
-  const anyDialog = !!sendOpen || !!focus || presenting
+  const anyDialog = !!sendOpen || !!focus || presenting || saveOpen > 0
   useHotkey('m', merge, !anyDialog && selection.length > 1)
   useHotkey('u', split, !anyDialog && selection.length > 0)
   useHotkey('f', () => selection[0] !== undefined && openFocus(selection[0]), !anyDialog)
@@ -254,11 +300,40 @@ export function WallPage() {
         }
         description={
           state
-            ? `Revision ${state.revision} · changed by ${state.updatedBy} ${relative(state.updatedAt, now)} · controller ${state.controller}`
+            ? `Revision ${state.revision} · changed by ${state.updatedBy} ${relative(state.updatedAt, now)} · controller ${state.controller} · ${
+                state.published
+                  ? `on the wall: ${state.published.ref} (revision ${state.published.revision}, ${relative(state.published.publishedAt, now)})`
+                  : 'nothing published yet'
+              }`
             : 'Loading wall state…'
         }
         actions={
           <>
+            {canPublish && (
+              <Button
+                variant={unpublished ? 'primary' : 'secondary'}
+                icon={unpublished ? Radio : MonitorCheck}
+                onClick={publish}
+                disabled={!state || publishLayout.isPending}
+                title={
+                  unpublished
+                    ? 'Send this layout to the wall controller'
+                    : 'The wall already shows this revision'
+                }
+              >
+                {publishLayout.isPending
+                  ? 'Publishing…'
+                  : unpublished
+                    ? 'Publish to wall'
+                    : 'Published'}
+              </Button>
+            )}
+            <Link
+              to="/wall/simulator"
+              className="inline-flex h-8 items-center gap-1.5 rounded-md border border-line-strong px-3 text-[12.5px] font-medium text-ink-2 hover:bg-tint/5 hover:text-ink"
+            >
+              <MonitorPlay size={14} aria-hidden /> Controller view
+            </Link>
             <Button
               icon={state?.visitorMode ? EyeOff : Eye}
               variant={state?.visitorMode ? 'danger' : 'secondary'}
@@ -287,17 +362,24 @@ export function WallPage() {
         state={state}
         pendingKey={activate.isPending ? activate.variables : undefined}
         onActivate={activatePreset}
+        canOperate={canPublish}
+        onSave={() => setSaveOpen(Date.now())}
+        onDelete={removePreset}
       />
 
       <div className="mt-4 grid grid-cols-1 items-start gap-4 2xl:grid-cols-[minmax(0,1fr)_336px]">
         <section aria-label="Wall planner" className="min-w-0">
           <div className="mb-2.5 flex flex-wrap items-center gap-x-4 gap-y-2">
             <span className="eyebrow flex items-center gap-2 text-ink-2">
-              <span className="relative inline-flex size-2">
-                <span className="absolute inset-0 animate-ping-slow rounded-full bg-red/70" />
-                <span className="relative size-2 rounded-full bg-red" />
-              </span>
-              Live preview
+              {unpublished ? (
+                <span className="size-2 rounded-full bg-amber" />
+              ) : (
+                <span className="relative inline-flex size-2">
+                  <span className="absolute inset-0 animate-ping-slow rounded-full bg-red/70" />
+                  <span className="relative size-2 rounded-full bg-red" />
+                </span>
+              )}
+              {unpublished ? 'Layout · not yet on the wall' : 'Layout · on the wall'}
             </span>
             <label className="flex cursor-pointer items-center gap-2 text-[12px] text-ink-muted">
               <input
@@ -462,8 +544,12 @@ export function WallPage() {
                       toast({
                         title:
                           decision === 'approve'
-                            ? `${p.ref} approved and on the wall`
+                            ? `${p.ref} approved into the layout`
                             : `${p.ref} rejected`,
+                        detail:
+                          decision === 'approve'
+                            ? 'Publish the layout to put it on the wall.'
+                            : undefined,
                         tone: decision === 'approve' ? 'success' : 'info',
                       })
                       if (decision === 'approve') setSelection(p.targets)
@@ -532,6 +618,16 @@ export function WallPage() {
           sendToAnalyst()
         }}
       />
+      {state && saveOpen > 0 && (
+        <SavePresetModal
+          key={saveOpen}
+          open
+          onClose={() => setSaveOpen(0)}
+          state={state}
+          saving={savePreset.isPending}
+          onSave={saveAsPreset}
+        />
+      )}
       {state && (
         <PresentationView state={state} open={presenting} onClose={() => setPresenting(false)} />
       )}

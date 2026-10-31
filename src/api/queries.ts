@@ -2,11 +2,15 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from './index'
 import type {
   Alert,
+  NameSearchInput,
+  CctvRequestInput,
+  CctvRequestStatus,
   UploadProgress,
   BriefSentence,
   CaseState,
   ClaimOutcomeInput,
   FindingInput,
+  MissionTemplateInput,
   StatementInput,
   Page,
   PromoteInput,
@@ -27,6 +31,12 @@ import type {
  * family (`['cases']`) without knowing which filters are on screen.
  */
 export const qk = {
+  nameSearches: ['names', 'list'] as const,
+  nameSearch: (id: string) => ['names', id] as const,
+  nameMentions: (id: string, clusterId?: string) =>
+    ['names', id, 'results', clusterId ?? 'all'] as const,
+  nameClusters: (id: string) => ['names', id, 'clusters'] as const,
+  nameReportData: (id: string) => ['names', id, 'report-data'] as const,
   me: ['me'] as const,
   watchFloor: ['watch-floor'] as const,
   feed: (channel?: string) => ['feed', channel ?? 'all'] as const,
@@ -57,6 +67,12 @@ export const qk = {
   wall: ['wall', 'state'] as const,
   wallPresets: ['wall', 'presets'] as const,
   wallPublications: ['wall', 'publications'] as const,
+  wallLayoutPublications: ['wall', 'layout-publications'] as const,
+  wallController: ['wall', 'controller'] as const,
+  cctvRequests: (status?: string) => ['cctv', 'requests', status ?? 'all'] as const,
+  cctvRequest: (id: string) => ['cctv', 'request', id] as const,
+  cctvCameras: ['cctv', 'cameras'] as const,
+  cctvLawfulBases: ['cctv', 'lawful-bases'] as const,
 }
 
 export const useMe = () => useQuery({ queryKey: qk.me, queryFn: api.me, staleTime: Infinity })
@@ -377,7 +393,9 @@ export const useCase = (id: string) =>
   useQuery({ queryKey: qk.case(id), queryFn: () => api.case(id), enabled: !!id })
 
 export type CaseAction =
-  | { kind: 'checklist'; key: string; done: boolean }
+  | { kind: 'checklist'; key: string; done: boolean; note?: string }
+  | { kind: 'mission'; templateKey: string }
+  | { kind: 'category'; category: string }
   | { kind: 'summary'; summary: string }
   | { kind: 'finding'; input: FindingInput }
   | { kind: 'revise'; findingId: string; input: FindingInput; version: number }
@@ -392,7 +410,11 @@ export function useCaseAction(id: string) {
     mutationFn: (a: CaseAction) => {
       switch (a.kind) {
         case 'checklist':
-          return api.setChecklistItem(id, a.key, a.done)
+          return api.setChecklistItem(id, a.key, a.done, a.note)
+        case 'mission':
+          return api.applyCaseMission(id, a.templateKey)
+        case 'category':
+          return api.setCaseCategory(id, a.category)
         case 'summary':
           return api.setCaseSummary(id, a.summary)
         case 'finding':
@@ -547,5 +569,191 @@ export function useDecidePublication() {
       qc.invalidateQueries({ queryKey: qk.wallPublications })
       qc.invalidateQueries({ queryKey: qk.wall })
     },
+  })
+}
+
+// Presets stored server-side, publication to the controller and the simulator (E33, ADR 0015).
+
+export function useSaveWallPreset() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (v: { name: string; description?: string }) => api.saveWallPreset(v),
+    onSuccess: () => qc.invalidateQueries({ queryKey: qk.wallPresets }),
+  })
+}
+
+export function useDeleteWallPreset() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (key: WallPresetKey) => api.deleteWallPreset(key),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: qk.wallPresets })
+      qc.invalidateQueries({ queryKey: qk.wall })
+    },
+  })
+}
+
+export function usePublishWallLayout() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (revision: number) => api.publishWallLayout(revision),
+    onSettled: () => {
+      qc.invalidateQueries({ queryKey: qk.wall })
+      qc.invalidateQueries({ queryKey: qk.wallLayoutPublications })
+      qc.invalidateQueries({ queryKey: qk.wallController })
+    },
+  })
+}
+
+export const useWallLayoutPublications = () =>
+  useQuery({ queryKey: qk.wallLayoutPublications, queryFn: api.wallLayoutPublications })
+
+/**
+ * What the controller shows. The hub does not push publications yet (gateway forwards only
+ * WallStateChanged), so the simulator view polls.
+ */
+export const useWallController = () =>
+  useQuery({ queryKey: qk.wallController, queryFn: api.wallController, refetchInterval: 3000 })
+
+// ---------------------------------------------------------------- missions (E29, ADR 0012)
+
+export const missionKeys = {
+  all: ['missions'] as const,
+  list: (retired: boolean) => ['missions', retired ? 'with-retired' : 'live'] as const,
+}
+
+export const useMissionTemplates = (retired = false, enabled = true) =>
+  useQuery({
+    queryKey: missionKeys.list(retired),
+    queryFn: () => api.missionTemplates({ retired }),
+    enabled,
+  })
+
+export type MissionAction =
+  | { kind: 'create'; input: MissionTemplateInput }
+  | { kind: 'revise'; key: string; input: MissionTemplateInput; etag: string }
+  | { kind: 'retire'; key: string; etag: string }
+
+export function useMissionAction() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (a: MissionAction) => {
+      switch (a.kind) {
+        case 'create':
+          return api.createMissionTemplate(a.input)
+        case 'revise':
+          return api.reviseMissionTemplate(a.key, a.input, a.etag)
+        case 'retire':
+          return api.retireMissionTemplate(a.key, a.etag)
+      }
+    },
+    onSettled: () => qc.invalidateQueries({ queryKey: missionKeys.all }),
+  })
+}
+
+// ---------------------------------------------------------------- CCTV requests (E31, ADR 0014)
+
+export const useCctvRequests = (status?: CctvRequestStatus) =>
+  useQuery({ queryKey: qk.cctvRequests(status), queryFn: () => api.cctvRequests({ status }) })
+
+export const useCctvRequest = (id: string | undefined) =>
+  useQuery({
+    queryKey: qk.cctvRequest(id ?? ''),
+    queryFn: () => api.cctvRequest(id!),
+    enabled: !!id,
+  })
+
+export const useCctvCameras = () =>
+  useQuery({ queryKey: qk.cctvCameras, queryFn: () => api.cctvCameras(), staleTime: 300_000 })
+
+export const useCctvLawfulBases = () =>
+  useQuery({
+    queryKey: qk.cctvLawfulBases,
+    queryFn: () => api.cctvLawfulBases(),
+    staleTime: Infinity,
+  })
+
+/** Creates a draft, or saves one with its ETag; every change refreshes the list and the request. */
+export function useSaveCctvRequest() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (v: { id?: string; caseId: string; input: CctvRequestInput; etag?: string }) =>
+      v.id && v.etag
+        ? api.editCctvRequest(v.id, v.input, v.etag)
+        : api.createCctvRequest(v.caseId, v.input),
+    onSuccess: (r) => {
+      qc.invalidateQueries({ queryKey: ['cctv', 'requests'] })
+      qc.invalidateQueries({ queryKey: qk.cctvRequest(r.id) })
+    },
+  })
+}
+
+export function useSubmitCctvRequest() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (v: { id: string; etag: string }) => api.submitCctvRequest(v.id, v.etag),
+    // A refusal changes the request too (it ends refused), so refresh either way.
+    onSettled: (_r, _e, v) => {
+      qc.invalidateQueries({ queryKey: ['cctv', 'requests'] })
+      qc.invalidateQueries({ queryKey: qk.cctvRequest(v.id) })
+      qc.invalidateQueries({ queryKey: qk.approvals })
+    },
+  })
+}
+
+// Name-of-interest searches (E30, ADR 0013).
+
+export const useNameSearches = (enabled = true) =>
+  useQuery({ queryKey: qk.nameSearches, queryFn: api.nameSearches, enabled })
+
+export const useNameSearch = (id: string, enabled = true) =>
+  useQuery({ queryKey: qk.nameSearch(id), queryFn: () => api.nameSearch(id), enabled })
+
+export const useNameMentions = (id: string, clusterId?: string, enabled = true) =>
+  useQuery({
+    queryKey: qk.nameMentions(id, clusterId),
+    queryFn: () => api.nameMentions(id, { clusterId }),
+    enabled,
+    retry: false,
+  })
+
+export const useNameClusters = (id: string, enabled = true) =>
+  useQuery({
+    queryKey: qk.nameClusters(id),
+    queryFn: () => api.nameClusters(id),
+    enabled,
+    retry: false,
+  })
+
+export const useNameReportData = (id: string, enabled = true) =>
+  useQuery({
+    queryKey: qk.nameReportData(id),
+    queryFn: () => api.nameReportData(id),
+    enabled,
+    retry: false,
+  })
+
+export function useStartNameSearch() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (input: NameSearchInput) => api.startNameSearch(input),
+    onSuccess: () => qc.invalidateQueries({ queryKey: qk.nameSearches }),
+  })
+}
+
+export function useDecideNameCluster(id: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (v: { clusterId: string; confirmed: boolean }) =>
+      api.decideNameCluster(id, v.clusterId, v.confirmed),
+    onSuccess: () => qc.invalidateQueries({ queryKey: qk.nameClusters(id) }),
+  })
+}
+
+export function useTakeNameReportData(id: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: () => api.takeNameReportData(id),
+    onSuccess: (r) => qc.setQueryData(qk.nameReportData(id), r),
   })
 }

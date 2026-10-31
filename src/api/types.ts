@@ -336,7 +336,9 @@ export interface CaseDetail extends CaseSummary {
   indicators: Indicator[]
   claims: Claim[]
   timeline: TimelineEntry[]
-  checklist: { key?: string; label: string; done: boolean }[]
+  checklist: ChecklistLine[]
+  /** The mission template version the checklist was copied from (E29, ADR 0012). */
+  mission?: CaseMission
   statements?: CaseStatement[]
   summaryBy?: string
   summaryUpdatedAt?: string
@@ -511,6 +513,8 @@ export interface PromoteInput {
   ownerId: string
   priority: Priority
   deadline: string
+  /** Decides the case's mission template (E29). */
+  category?: string
 }
 
 // ---------------------------------------------------------------- review
@@ -542,6 +546,8 @@ export interface ApprovalStep {
   decidedBy?: string
   decision?: 'approve' | 'refuse'
   decidedAt?: string
+  /** What the approver wrote; a refusal always says why. */
+  comment?: string
 }
 
 export interface Approval {
@@ -641,7 +647,11 @@ export type WallContentKey =
   | 'system'
   | 'live-feeds'
 
-export type WallPresetKey = 'standing' | 'incident' | 'verification' | 'briefing'
+/** The four standard presets, which reporting seeds and never deletes (ADR 0015). */
+export type StandardWallPresetKey = 'standing' | 'incident' | 'verification' | 'briefing'
+
+/** A stored preset's key: a standard one, or one an operator saved (lower-case, hyphenated). */
+export type WallPresetKey = StandardWallPresetKey | (string & {})
 
 export interface WallPreset {
   key: WallPresetKey
@@ -650,6 +660,9 @@ export interface WallPreset {
   /** Content for each of the 16 physical screens, row-major. */
   screens: WallContentKey[]
   groups: Omit<WallGroup, 'id'>[]
+  /** One of the standard four: cannot be deleted. */
+  builtIn: boolean
+  createdBy?: string
 }
 
 export interface WallGroup {
@@ -678,6 +691,52 @@ export interface WallState {
   controller: 'online' | 'simulated' | 'offline'
   updatedAt: string
   updatedBy: string
+  /** The layout the physical wall shows: the last publication the controller accepted. */
+  published?: WallPublishedRef
+}
+
+/** Which publication is on the wall; `revision` is the layout revision that was sent. */
+export interface WallPublishedRef {
+  id: string
+  ref: string
+  revision: number
+  preset: string
+  publishedBy: string
+  publishedAt: string
+}
+
+/** One push of the stored layout to the wall controller (ADR 0015). */
+export interface WallLayoutPublication {
+  id: string
+  ref: string
+  revision: number
+  preset: string
+  screens: WallScreen[]
+  groups: WallGroup[]
+  visitorMode: boolean
+  adapter: string
+  publishedBy: string
+  publishedAt: string
+  delivered: boolean
+  failure?: string
+}
+
+/** What the wall controller (the simulator until E36) reports it is doing. */
+export interface WallControllerStatus {
+  adapter: string
+  online: boolean
+  inputsMuted: boolean
+  layout?: {
+    publicationId: string
+    publicationRef: string
+    preset: string
+    revision: number
+    screens: WallScreen[]
+    groups: WallGroup[]
+  }
+  layoutActivatedAt?: string
+  routes: { input: string; screens: number[] }[]
+  log: { at: string; command: string; detail: string; accepted: boolean }[]
 }
 
 export interface WallPublication {
@@ -903,4 +962,194 @@ export interface WorkingCopy {
   expiresAt: string
   contentType: string
   sizeBytes: number
+}
+
+// ---------------------------------------------------------------- CCTV requests (E31, ADR 0014)
+
+/** draft → awaiting_approval → approved, refused or expired (governance's CCTV_SEARCH gate). */
+export type CctvRequestStatus = 'draft' | 'awaiting_approval' | 'approved' | 'refused' | 'expired'
+
+export interface CctvRequest {
+  id: string
+  caseId: string
+  caseRef?: string
+  status: CctvRequestStatus
+  approvalId?: string
+  cameras: string[]
+  location?: string
+  windowStart?: string
+  windowEnd?: string
+  attributes: string[]
+  freeText?: string
+  lawfulBasis?: string
+  legalReference?: string
+  reason?: string
+  requesterId: string
+  requesterName: string
+  requestedAt: string
+  submittedAt?: string
+  decidedAt?: string
+  /** approver_refused, capability_not_authorised, or governance's own code. */
+  refusalCode?: string
+  /** The refusal in plain words, when refused. */
+  refusal?: string
+  etag: string
+}
+
+/** What a draft may hold; everything is checked again on submit. No file field, ever (§7.5). */
+export interface CctvRequestInput {
+  cameras: string[]
+  location?: string
+  windowStart?: string
+  windowEnd?: string
+  attributes: string[]
+  freeText?: string
+  lawfulBasis?: string
+  legalReference?: string
+  reason?: string
+}
+
+export interface LawfulBasisOption {
+  code: string
+  label: string
+}
+
+// ---------------------------------------------------------------- missions (E29, ADR 0012)
+
+/** One line of a case's mission checklist. */
+export interface ChecklistLine {
+  key?: string
+  label: string
+  done: boolean
+  /** Submit waits for required lines; optional ones are shown to the reviewer either way. Absent means required. */
+  required?: boolean
+  doneBy?: string
+  doneAt?: string
+  note?: string
+  noteBy?: string
+}
+
+export interface CaseMission {
+  templateKey: string | null
+  version: number | null
+  name: string | null
+}
+
+export interface MissionLine {
+  key: string
+  label: string
+  required: boolean
+}
+
+export interface MissionVersion {
+  number: number
+  name: string
+  items: MissionLine[]
+  createdBy: string
+  createdAt: string
+}
+
+/** A mission template: ordered lines, the categories it covers, and every saved version. */
+export interface MissionTemplate {
+  key: string
+  name: string
+  description: string
+  categories: string[]
+  currentVersion: number
+  retired: boolean
+  isDefault: boolean
+  items: MissionLine[]
+  versions: MissionVersion[]
+  updatedBy: string
+  updatedAt: string
+  etag: string
+}
+
+export interface MissionTemplateInput {
+  /** Only when creating: the key never changes. */
+  key?: string
+  name: string
+  description: string
+  categories: string[]
+  items: MissionLine[]
+}
+
+// ---------------------------------------------------------------- name searches (E30, ADR 0013)
+
+export type NameSearchKind = 'public' | 'private_individual'
+export type NameSearchStatus = 'created' | 'awaiting_approval' | 'completed' | 'refused' | 'expired'
+
+export interface NameSearch {
+  id: string
+  name: string
+  kind: NameSearchKind
+  caseId?: string
+  reason?: string
+  requestedBy: string
+  requestedAt: string
+  status: NameSearchStatus
+  approvalExpiresAt?: string
+  /** Every indexed document that mentions the name; the results keep the best 200. */
+  resultCount: number
+  completedAt?: string
+  etag: string
+}
+
+export interface NameSearchInput {
+  name: string
+  kind: NameSearchKind
+  caseId?: string
+  reason?: string
+}
+
+/** One document that mentions the name, with the passage around it (`<mark>` around the name). */
+export interface NameMention {
+  id: string
+  documentType: string
+  documentId: string
+  caseId?: string
+  title: string
+  at: string
+  source?: string
+  snippet?: string
+  clusterId?: string
+}
+
+export type NameClusterStatus = 'suggested' | 'confirmed' | 'rejected'
+
+export interface NameCluster {
+  id: string
+  /** The context words its mentions share: why the cluster exists. */
+  terms: string[]
+  mentionCount: number
+  firstSeen: string
+  lastSeen: string
+  status: NameClusterStatus
+  decidedBy?: string
+  decidedAt?: string
+}
+
+export interface NameBucket {
+  key: string
+  count: number
+}
+
+/** A snapshot of the numbers reporting and the wall use. Breakdowns: type, source, day (and later location). */
+export interface NameReportData {
+  id: string
+  nameSearchId: string
+  name: string
+  kind: NameSearchKind
+  caseId?: string
+  createdBy: string
+  createdAt: string
+  retentionClass: 'standard' | 'short'
+  basis: 'confirmed_clusters' | 'all_results'
+  mentionCount: number
+  clusterCount: number
+  firstSeen?: string
+  lastSeen?: string
+  breakdowns: Record<string, NameBucket[]>
+  caseIds: string[]
+  clusters: { id: string; status: NameClusterStatus; terms: string[]; mentionCount: number }[]
 }

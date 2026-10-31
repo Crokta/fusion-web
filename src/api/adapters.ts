@@ -8,6 +8,15 @@
  * default is chosen to read as "not known" on screen, never as a made-up fact.
  */
 import type {
+  ChecklistLine,
+  NameCluster,
+  NameMention,
+  NameReportData,
+  NameSearch,
+  MissionTemplate,
+  MissionTemplateInput,
+  CctvRequest,
+  CctvRequestStatus,
   Alert,
   Approval,
   CaptureRequest,
@@ -52,8 +61,13 @@ import type {
   TimelineEntry,
   TriageItem,
   TriageStatus,
+  WallContentKey,
+  WallControllerStatus,
+  WallGroup,
+  WallLayoutPublication,
   WallPreset,
   WallPublication,
+  WallScreen,
   WallState,
   WatchFloorSummary,
 } from './types'
@@ -81,6 +95,11 @@ export interface ChecklistItemDto {
   done: boolean
   doneBy: string | null
   doneAt: string | null
+  // Missions (absent from a casework older than E29).
+  required?: boolean
+  note?: string | null
+  noteBy?: string | null
+  noteAt?: string | null
 }
 
 /** casework's CaseMatrixView (camelCase). */
@@ -185,6 +204,9 @@ export interface CaseDto {
   closedAt: string | null
   checklistComplete: boolean
   checklist: ChecklistItemDto[]
+  // Missions (absent from a casework older than E29).
+  category?: string | null
+  mission?: { templateKey: string | null; templateVersion: number | null; name: string | null }
   items: { evidenceId: string; attachedAt: string }[]
   // Assessment (absent from a casework older than E22).
   summary?: string | null
@@ -463,8 +485,55 @@ export interface SearchHitDto {
   source?: string | null
 }
 
-export interface WallStateDto extends Omit<WallState, 'revision' | 'controller'> {
+export interface WallStateDto extends Omit<
+  WallState,
+  'revision' | 'controller' | 'published' | 'screens'
+> {
   version: number
+  screens: WallScreenDto[]
+  /** Absent from reporting before E33. */
+  controller?: WallState['controller'] | null
+  published?: WallPublishedDto | null
+}
+
+export interface WallPublishedDto {
+  id: string
+  ref: string
+  layoutVersion: number
+  preset: string
+  publishedBy: string
+  publishedAt: string
+}
+
+export interface WallLayoutPublicationDto extends Omit<
+  WallLayoutPublication,
+  'revision' | 'failure' | 'screens'
+> {
+  layoutVersion: number
+  failure: string | null
+  screens: WallScreenDto[]
+}
+
+export interface WallScreenDto {
+  index: number
+  content: WallContentKey
+  contextRef?: string | null
+  leaseExpiresAt?: string | null
+}
+
+export interface WallControllerDto extends Omit<
+  WallControllerStatus,
+  'layout' | 'layoutActivatedAt'
+> {
+  layout: {
+    publicationId: string
+    publicationRef: string
+    preset: string
+    layoutVersion: number
+    screens: WallScreenDto[]
+    groups: WallGroup[]
+  } | null
+  layoutActivatedAt: string | null
 }
 
 export interface WallPublicationDto extends WallPublication {
@@ -521,8 +590,8 @@ export function toCaseSummary(c: CaseDto, name: NameOf): CaseSummary {
     title: c.title,
     state: toCaseState(c.state),
     priority: toPriority(c.priority),
-    // casework does not classify cases or place them yet.
-    category: 'Unclassified',
+    // casework does not place cases yet; the category decides the mission template (E29).
+    category: c.category ?? 'Unclassified',
     place: '—',
     owner: { id: c.ownerId ?? '', name: c.ownerId ? name(c.ownerId) : 'Unassigned' },
     deadline: c.deadline ?? c.updatedAt,
@@ -644,7 +713,7 @@ export const peopleOfCase = (c: CaseDto) => [
   c.ownerId,
   c.createdBy,
   c.summaryBy,
-  ...c.checklist.map((i) => i.doneBy),
+  ...c.checklist.flatMap((i) => [i.doneBy, i.noteBy]),
   ...(c.findings ?? []).flatMap((f) => [f.authorId, f.revisedBy]),
   ...(c.claims ?? []).flatMap((x) => [x.recordedBy, x.outcomeSetBy]),
   ...(c.statements ?? []).map((x) => x.recordedBy),
@@ -742,7 +811,14 @@ export function toCaseDetail(
     claims: (c.claims ?? []).map((x) => toClaim(x, name)),
     statements: (c.statements ?? []).map((x) => toStatement(x, name)),
     timeline: caseTimeline(c, name),
-    checklist: c.checklist.map((i) => ({ key: i.key, label: i.label, done: i.done })),
+    checklist: c.checklist.map((i) => toChecklistLine(i, name)),
+    mission: c.mission
+      ? {
+          templateKey: c.mission.templateKey,
+          version: c.mission.templateVersion,
+          name: c.mission.name,
+        }
+      : undefined,
     etag: etag ?? `"v${c.version}"`,
   }
 }
@@ -783,6 +859,7 @@ export function toApproval(a: ApprovalDto, name: NameOf, caseRef?: string): Appr
           decidedBy: name(d.decidedBy),
           decision: d.decision === 'reject' ? 'refuse' : 'approve',
           decidedAt: d.decidedAt,
+          comment: d.comment ?? undefined,
         }
       const awaiting = a.currentStep === i + 1 ? a.awaitingRoles : []
       const role = (roles[i] ?? awaiting[0] ?? 'reviewer') as ApprovalStep['role']
@@ -1172,19 +1249,62 @@ export function toItemDetail(
 // The wall (reporting)
 // ---------------------------------------------------------------------------------------
 
+const toWallScreen = (s: WallScreenDto): WallScreen => ({
+  ...s,
+  contextRef: s.contextRef ?? undefined,
+  leaseExpiresAt: s.leaseExpiresAt ?? undefined,
+})
+
 /** The controller adapter is the simulator until the AV vendor's hardware is wired (E36). */
 export function toWallState(w: WallStateDto, name: NameOf): WallState {
-  const { version, ...rest } = w
+  const { version, published, controller, ...rest } = w
   return {
     ...rest,
-    screens: rest.screens.map((s) => ({
-      ...s,
-      contextRef: s.contextRef ?? undefined,
-      leaseExpiresAt: s.leaseExpiresAt ?? undefined,
-    })),
+    screens: rest.screens.map(toWallScreen),
     revision: version,
-    controller: 'simulated',
+    controller: controller ?? 'simulated',
     updatedBy: name(w.updatedBy),
+    published: published
+      ? {
+          id: published.id,
+          ref: published.ref,
+          revision: published.layoutVersion,
+          preset: published.preset,
+          publishedBy: name(published.publishedBy),
+          publishedAt: published.publishedAt,
+        }
+      : undefined,
+  }
+}
+
+export function toWallLayoutPublication(
+  p: WallLayoutPublicationDto,
+  name: NameOf,
+): WallLayoutPublication {
+  const { layoutVersion, failure, ...rest } = p
+  return {
+    ...rest,
+    screens: p.screens.map(toWallScreen),
+    revision: layoutVersion,
+    publishedBy: name(p.publishedBy),
+    failure: failure ?? undefined,
+  }
+}
+
+export function toWallController(c: WallControllerDto): WallControllerStatus {
+  return {
+    ...c,
+    layout: c.layout
+      ? {
+          publicationId: c.layout.publicationId,
+          publicationRef: c.layout.publicationRef,
+          preset: c.layout.preset,
+          revision: c.layout.layoutVersion,
+          screens: c.layout.screens.map(toWallScreen),
+          groups: c.layout.groups,
+        }
+      : undefined,
+    layoutActivatedAt: c.layoutActivatedAt ?? undefined,
   }
 }
 
@@ -1215,5 +1335,278 @@ export function toWallPublication(p: WallPublicationDto, name: NameOf): WallPubl
     requestedAt: p.requestedAt,
     note: p.note ?? undefined,
     status: p.status,
+  }
+}
+
+// ---------------------------------------------------------------- CCTV requests (E31, ADR 0014)
+
+export interface CctvRequestDto {
+  id: string
+  caseId: string
+  status: CctvRequestStatus
+  approvalId: string | null
+  cameras: string[]
+  location: string | null
+  windowStart: string | null
+  windowEnd: string | null
+  attributes: string[]
+  freeText: string | null
+  lawfulBasis: string | null
+  legalReference: string | null
+  reason: string | null
+  requestedBy: string
+  requestedAt: string
+  submittedAt: string | null
+  decidedAt: string | null
+  refusalCode: string | null
+  version: number
+}
+
+/** A refusal code from cctv, in plain words for the analyst. */
+export function cctvRefusalText(code: string): string {
+  switch (code) {
+    case 'approver_refused':
+      return 'An approver refused the request.'
+    case 'capability_not_authorised':
+      return 'Refused by rule: CCTV search is switched off by policy, or your role may not ask for it.'
+    case 'self_approval_forbidden':
+      return 'Refused by governance: the approver cannot be the requester.'
+    default:
+      return `Refused by governance (${code}).`
+  }
+}
+
+export function toCctvRequest(r: CctvRequestDto, name: NameOf, caseRef?: string): CctvRequest {
+  return {
+    id: r.id,
+    caseId: r.caseId,
+    caseRef,
+    status: r.status,
+    approvalId: r.approvalId ?? undefined,
+    cameras: r.cameras,
+    location: r.location ?? undefined,
+    windowStart: r.windowStart ?? undefined,
+    windowEnd: r.windowEnd ?? undefined,
+    attributes: r.attributes,
+    freeText: r.freeText ?? undefined,
+    lawfulBasis: r.lawfulBasis ?? undefined,
+    legalReference: r.legalReference ?? undefined,
+    reason: r.reason ?? undefined,
+    requesterId: r.requestedBy,
+    requesterName: name(r.requestedBy),
+    requestedAt: r.requestedAt,
+    submittedAt: r.submittedAt ?? undefined,
+    decidedAt: r.decidedAt ?? undefined,
+    refusalCode: r.refusalCode ?? undefined,
+    refusal: r.status === 'refused' && r.refusalCode ? cctvRefusalText(r.refusalCode) : undefined,
+    etag: `"v${r.version}"`,
+  }
+}
+
+// ---------------------------------------------------------------------------------------
+// Missions (E29, ADR 0012)
+// ---------------------------------------------------------------------------------------
+
+export function toChecklistLine(i: ChecklistItemDto, name: NameOf): ChecklistLine {
+  return {
+    key: i.key,
+    label: i.label,
+    done: i.done,
+    // Lines from before templates were all needed for Submit.
+    required: i.required ?? true,
+    doneBy: i.doneBy ? name(i.doneBy) : undefined,
+    doneAt: i.doneAt ?? undefined,
+    note: i.note ?? undefined,
+    noteBy: i.noteBy ? name(i.noteBy) : undefined,
+  }
+}
+
+/** casework's MissionTemplateView (camelCase). */
+export interface MissionTemplateDto {
+  id: string
+  key: string
+  name: string
+  description: string | null
+  categories: string[]
+  currentVersion: number
+  retired: boolean
+  isDefault: boolean
+  items: { key: string; label: string; required: boolean }[]
+  versions: {
+    number: number
+    name: string
+    items: { key: string; label: string; required: boolean }[]
+    createdBy: string
+    createdAt: string
+  }[]
+  createdBy: string
+  createdAt: string
+  updatedBy: string
+  updatedAt: string
+  version: number
+}
+
+export function toMissionTemplate(t: MissionTemplateDto, name: NameOf): MissionTemplate {
+  return {
+    key: t.key,
+    name: t.name,
+    description: t.description ?? '',
+    categories: t.categories,
+    currentVersion: t.currentVersion,
+    retired: t.retired,
+    isDefault: t.isDefault,
+    items: t.items,
+    versions: t.versions.map((v) => ({ ...v, createdBy: name(v.createdBy) })),
+    updatedBy: name(t.updatedBy),
+    updatedAt: t.updatedAt,
+    etag: `"v${t.version}"`,
+  }
+}
+
+/** The body casework expects: blanks dropped, labels and categories trimmed. */
+export function fromMissionTemplateInput(input: MissionTemplateInput) {
+  return {
+    ...(input.key ? { key: input.key } : {}),
+    name: input.name.trim(),
+    description: input.description.trim() || null,
+    categories: input.categories.map((c) => c.trim()).filter(Boolean),
+    items: input.items
+      .filter((i) => i.label.trim())
+      .map((i) => ({ key: i.key, label: i.label.trim(), required: i.required })),
+  }
+}
+
+// ---------------------------------------------------------------- name searches (E30, ADR 0013)
+
+export interface NameSearchDto {
+  id: string
+  name: string
+  kind: string
+  caseId: string | null
+  reason: string | null
+  requestedBy: string
+  requestedAt: string
+  status: string
+  approvalId: string | null
+  approvalExpiresAt: string | null
+  resultCount: number
+  completedAt: string | null
+  version: number
+}
+
+export interface NameMentionDto {
+  id: string
+  documentType: string
+  documentId: string
+  caseId: string | null
+  title: string
+  at: string
+  source: string | null
+  snippet: string | null
+  score: number
+  clusterId: string | null
+}
+
+export interface NameClusterDto {
+  id: string
+  terms: string[]
+  mentionCount: number
+  firstSeen: string
+  lastSeen: string
+  status: string
+  decidedBy: string | null
+  decidedAt: string | null
+}
+
+export interface NameReportDataDto {
+  id: string
+  nameSearchId: string
+  name: string
+  kind: string
+  caseId: string | null
+  createdBy: string
+  createdAt: string
+  retentionClass: string
+  aggregates: {
+    basis: string
+    mentionCount: number
+    clusterCount: number
+    firstSeen: string | null
+    lastSeen: string | null
+    breakdowns: Record<string, { key: string; count: number }[]>
+    caseIds: string[]
+    clusters: { id: string; status: string; terms: string[]; mentionCount: number }[]
+  }
+}
+
+const nameKind = (k: string): NameSearch['kind'] =>
+  k === 'private_individual' ? 'private_individual' : 'public'
+
+const clusterStatus = (s: string): NameCluster['status'] =>
+  s === 'confirmed' || s === 'rejected' ? s : 'suggested'
+
+export function toNameSearch(d: NameSearchDto, name: NameOf): NameSearch {
+  return {
+    id: d.id,
+    name: d.name,
+    kind: nameKind(d.kind),
+    caseId: d.caseId ?? undefined,
+    reason: d.reason ?? undefined,
+    requestedBy: name(d.requestedBy),
+    requestedAt: d.requestedAt,
+    status: d.status as NameSearch['status'],
+    approvalExpiresAt: d.approvalExpiresAt ?? undefined,
+    resultCount: d.resultCount,
+    completedAt: d.completedAt ?? undefined,
+    etag: `"v${d.version}"`,
+  }
+}
+
+export function toNameMention(d: NameMentionDto): NameMention {
+  return {
+    id: d.id,
+    documentType: d.documentType,
+    documentId: d.documentId,
+    caseId: d.caseId ?? undefined,
+    title: d.title,
+    at: d.at,
+    source: d.source ?? undefined,
+    snippet: d.snippet ?? undefined,
+    clusterId: d.clusterId ?? undefined,
+  }
+}
+
+export function toNameCluster(d: NameClusterDto, name: NameOf): NameCluster {
+  return {
+    id: d.id,
+    terms: d.terms,
+    mentionCount: d.mentionCount,
+    firstSeen: d.firstSeen,
+    lastSeen: d.lastSeen,
+    status: clusterStatus(d.status),
+    decidedBy: d.decidedBy ? name(d.decidedBy) : undefined,
+    decidedAt: d.decidedAt ?? undefined,
+  }
+}
+
+export function toNameReportData(d: NameReportDataDto, name: NameOf): NameReportData {
+  const a = d.aggregates
+  return {
+    id: d.id,
+    nameSearchId: d.nameSearchId,
+    name: d.name,
+    kind: nameKind(d.kind),
+    caseId: d.caseId ?? undefined,
+    createdBy: name(d.createdBy),
+    createdAt: d.createdAt,
+    retentionClass: d.retentionClass === 'short' ? 'short' : 'standard',
+    basis: a.basis === 'confirmed_clusters' ? 'confirmed_clusters' : 'all_results',
+    mentionCount: a.mentionCount,
+    clusterCount: a.clusterCount,
+    firstSeen: a.firstSeen ?? undefined,
+    lastSeen: a.lastSeen ?? undefined,
+    breakdowns: a.breakdowns,
+    caseIds: a.caseIds,
+    clusters: a.clusters.map((c) => ({ ...c, status: clusterStatus(c.status) })),
   }
 }

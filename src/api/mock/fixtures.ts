@@ -1,4 +1,5 @@
 import type {
+  MissionTemplate,
   Alert,
   Approval,
   AuditEvent,
@@ -1536,6 +1537,7 @@ export const wallPresets: WallPreset[] = [
     description: 'Balanced situational awareness across all sources.',
     screens: standing,
     groups: [],
+    builtIn: true,
   },
   {
     key: 'incident',
@@ -1560,6 +1562,7 @@ export const wallPresets: WallPreset[] = [
       'live-feeds',
     ],
     groups: [{ cells: [0, 1, 4, 5], content: 'map-ng' }],
+    builtIn: true,
   },
   {
     key: 'verification',
@@ -1587,6 +1590,7 @@ export const wallPresets: WallPreset[] = [
       { cells: [0, 1, 4, 5], content: 'media-images' },
       { cells: [8, 9], content: 'video' },
     ],
+    builtIn: true,
   },
   {
     key: 'briefing',
@@ -1615,6 +1619,7 @@ export const wallPresets: WallPreset[] = [
       { cells: [8, 9], content: 'news-analytics' },
       { cells: [10, 11], content: 'cases' },
     ],
+    builtIn: true,
   },
 ]
 
@@ -1894,4 +1899,72 @@ export const syntheticHeadlines: {
     place: 'Kano',
     channel: 'health',
   },
+]
+
+// ---------------------------------------------------------------- missions (E29, ADR 0012)
+
+const missionLines = (lines: [string, string, boolean][]) =>
+  lines.map(([key, label, required]) => ({ key, label, required }))
+
+const mission = (
+  key: string,
+  name: string,
+  description: string,
+  categories: string[],
+  lines: [string, string, boolean][],
+): MissionTemplate => {
+  const items = missionLines(lines)
+  return {
+    key,
+    name,
+    description,
+    categories,
+    currentVersion: 1,
+    retired: false,
+    isDefault: key === 'default',
+    items,
+    versions: [{ number: 1, name, items, createdBy: 'System', createdAt: ago(60 * 24 * 30) }],
+    updatedBy: 'System',
+    updatedAt: ago(60 * 24 * 30),
+    etag: '"v1"',
+  }
+}
+
+export const missionTemplates: MissionTemplate[] = [
+  mission(
+    'default',
+    'Standard assessment',
+    'What every case gets when no template covers its category.',
+    [],
+    [
+      ['sources_checked', 'Sources checked against the register', true],
+      ['evidence_attached', 'Supporting evidence attached and registered', true],
+      ['statements_recorded', 'Statements recorded for every finding', true],
+      ['limitations_noted', 'Limitations and confidence noted', true],
+    ],
+  ),
+  mission(
+    'protest',
+    'Protest monitoring',
+    'Marches, rallies and sit-ins.',
+    ['Civil unrest'],
+    [
+      ['sources_checked', 'Sources checked against the register', true],
+      ['crowd_estimate', 'Crowd size estimated from two sources', true],
+      ['route_mapped', 'Route and gathering points mapped', false],
+      ['police_statement', 'Police statement sought', true],
+    ],
+  ),
+  mission(
+    'information-integrity',
+    'Information integrity',
+    'Rumours, recycled media and manipulated content.',
+    ['Information integrity'],
+    [
+      ['sources_checked', 'Sources checked against the register', true],
+      ['earliest_appearance', 'Earliest appearance traced', true],
+      ['media_screened', 'Media screened for reuse and manipulation', true],
+      ['platform_reported', 'Reported to the platform', false],
+    ],
+  ),
 ]

@@ -13,8 +13,10 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as SectionRouteImport } from './routes/$section'
 import { Route as AdminRouteImport } from './routes/admin'
 import { Route as ApprovalsRouteImport } from './routes/approvals'
+import { Route as CctvRouteImport } from './routes/cctv'
 import { Route as CollectionRouteImport } from './routes/collection'
 import { Route as FeedRouteImport } from './routes/feed'
+import { Route as MissionsRouteImport } from './routes/missions'
 import { Route as ProviderRouteImport } from './routes/provider'
 import { Route as ReviewRouteImport } from './routes/review'
 import { Route as RosterRouteImport } from './routes/roster'
@@ -24,8 +26,11 @@ import { Route as WallRouteImport } from './routes/wall'
 import { Route as AlertsAlertIdRouteImport } from './routes/alerts/$alertId'
 import { Route as CasesIndexRouteImport } from './routes/cases/index'
 import { Route as CasesCaseIdRouteImport } from './routes/cases/$caseId'
+import { Route as NamesIndexRouteImport } from './routes/names/index'
+import { Route as NamesSearchIdRouteImport } from './routes/names/$searchId'
 import { Route as ProductsIndexRouteImport } from './routes/products/index'
 import { Route as ProductsProductIdRouteImport } from './routes/products/$productId'
+import { Route as WallSimulatorRouteImport } from './routes/wall_.simulator'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -47,6 +52,11 @@ const ApprovalsRoute = ApprovalsRouteImport.update({
   path: '/approvals',
   getParentRoute: () => rootRouteImport,
 } as any)
+const CctvRoute = CctvRouteImport.update({
+  id: '/cctv',
+  path: '/cctv',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const CollectionRoute = CollectionRouteImport.update({
   id: '/collection',
   path: '/collection',
@@ -55,6 +65,11 @@ const CollectionRoute = CollectionRouteImport.update({
 const FeedRoute = FeedRouteImport.update({
   id: '/feed',
   path: '/feed',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const MissionsRoute = MissionsRouteImport.update({
+  id: '/missions',
+  path: '/missions',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ProviderRoute = ProviderRouteImport.update({
@@ -102,6 +117,16 @@ const CasesCaseIdRoute = CasesCaseIdRouteImport.update({
   path: '/cases/$caseId',
   getParentRoute: () => rootRouteImport,
 } as any)
+const NamesIndexRoute = NamesIndexRouteImport.update({
+  id: '/names/',
+  path: '/names/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const NamesSearchIdRoute = NamesSearchIdRouteImport.update({
+  id: '/names/$searchId',
+  path: '/names/$searchId',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ProductsIndexRoute = ProductsIndexRouteImport.update({
   id: '/products/',
   path: '/products/',
@@ -112,14 +137,21 @@ const ProductsProductIdRoute = ProductsProductIdRouteImport.update({
   path: '/products/$productId',
   getParentRoute: () => rootRouteImport,
 } as any)
+const WallSimulatorRoute = WallSimulatorRouteImport.update({
+  id: '/wall_/simulator',
+  path: '/wall/simulator',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/$section': typeof SectionRoute
   '/admin': typeof AdminRoute
   '/approvals': typeof ApprovalsRoute
+  '/cctv': typeof CctvRoute
   '/collection': typeof CollectionRoute
   '/feed': typeof FeedRoute
+  '/missions': typeof MissionsRoute
   '/provider': typeof ProviderRoute
   '/review': typeof ReviewRoute
   '/roster': typeof RosterRoute
@@ -128,8 +160,11 @@ export interface FileRoutesByFullPath {
   '/wall': typeof WallRoute
   '/alerts/$alertId': typeof AlertsAlertIdRoute
   '/cases/$caseId': typeof CasesCaseIdRoute
+  '/names/$searchId': typeof NamesSearchIdRoute
   '/products/$productId': typeof ProductsProductIdRoute
+  '/wall/simulator': typeof WallSimulatorRoute
   '/cases/': typeof CasesIndexRoute
+  '/names/': typeof NamesIndexRoute
   '/products/': typeof ProductsIndexRoute
 }
 export interface FileRoutesByTo {
@@ -137,8 +172,10 @@ export interface FileRoutesByTo {
   '/$section': typeof SectionRoute
   '/admin': typeof AdminRoute
   '/approvals': typeof ApprovalsRoute
+  '/cctv': typeof CctvRoute
   '/collection': typeof CollectionRoute
   '/feed': typeof FeedRoute
+  '/missions': typeof MissionsRoute
   '/provider': typeof ProviderRoute
   '/review': typeof ReviewRoute
   '/roster': typeof RosterRoute
@@ -147,8 +184,11 @@ export interface FileRoutesByTo {
   '/wall': typeof WallRoute
   '/alerts/$alertId': typeof AlertsAlertIdRoute
   '/cases/$caseId': typeof CasesCaseIdRoute
+  '/names/$searchId': typeof NamesSearchIdRoute
   '/products/$productId': typeof ProductsProductIdRoute
+  '/wall/simulator': typeof WallSimulatorRoute
   '/cases': typeof CasesIndexRoute
+  '/names': typeof NamesIndexRoute
   '/products': typeof ProductsIndexRoute
 }
 export interface FileRoutesById {
@@ -157,8 +197,10 @@ export interface FileRoutesById {
   '/$section': typeof SectionRoute
   '/admin': typeof AdminRoute
   '/approvals': typeof ApprovalsRoute
+  '/cctv': typeof CctvRoute
   '/collection': typeof CollectionRoute
   '/feed': typeof FeedRoute
+  '/missions': typeof MissionsRoute
   '/provider': typeof ProviderRoute
   '/review': typeof ReviewRoute
   '/roster': typeof RosterRoute
@@ -167,8 +209,11 @@ export interface FileRoutesById {
   '/wall': typeof WallRoute
   '/alerts/$alertId': typeof AlertsAlertIdRoute
   '/cases/$caseId': typeof CasesCaseIdRoute
+  '/names/$searchId': typeof NamesSearchIdRoute
   '/products/$productId': typeof ProductsProductIdRoute
+  '/wall_/simulator': typeof WallSimulatorRoute
   '/cases/': typeof CasesIndexRoute
+  '/names/': typeof NamesIndexRoute
   '/products/': typeof ProductsIndexRoute
 }
 export interface FileRouteTypes {
@@ -178,8 +223,10 @@ export interface FileRouteTypes {
     | '/$section'
     | '/admin'
     | '/approvals'
+    | '/cctv'
     | '/collection'
     | '/feed'
+    | '/missions'
     | '/provider'
     | '/review'
     | '/roster'
@@ -188,8 +235,11 @@ export interface FileRouteTypes {
     | '/wall'
     | '/alerts/$alertId'
     | '/cases/$caseId'
+    | '/names/$searchId'
     | '/products/$productId'
+    | '/wall/simulator'
     | '/cases/'
+    | '/names/'
     | '/products/'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -197,8 +247,10 @@ export interface FileRouteTypes {
     | '/$section'
     | '/admin'
     | '/approvals'
+    | '/cctv'
     | '/collection'
     | '/feed'
+    | '/missions'
     | '/provider'
     | '/review'
     | '/roster'
@@ -207,8 +259,11 @@ export interface FileRouteTypes {
     | '/wall'
     | '/alerts/$alertId'
     | '/cases/$caseId'
+    | '/names/$searchId'
     | '/products/$productId'
+    | '/wall/simulator'
     | '/cases'
+    | '/names'
     | '/products'
   id:
     | '__root__'
@@ -216,8 +271,10 @@ export interface FileRouteTypes {
     | '/$section'
     | '/admin'
     | '/approvals'
+    | '/cctv'
     | '/collection'
     | '/feed'
+    | '/missions'
     | '/provider'
     | '/review'
     | '/roster'
@@ -226,8 +283,11 @@ export interface FileRouteTypes {
     | '/wall'
     | '/alerts/$alertId'
     | '/cases/$caseId'
+    | '/names/$searchId'
     | '/products/$productId'
+    | '/wall_/simulator'
     | '/cases/'
+    | '/names/'
     | '/products/'
   fileRoutesById: FileRoutesById
 }
@@ -236,8 +296,10 @@ export interface RootRouteChildren {
   SectionRoute: typeof SectionRoute
   AdminRoute: typeof AdminRoute
   ApprovalsRoute: typeof ApprovalsRoute
+  CctvRoute: typeof CctvRoute
   CollectionRoute: typeof CollectionRoute
   FeedRoute: typeof FeedRoute
+  MissionsRoute: typeof MissionsRoute
   ProviderRoute: typeof ProviderRoute
   ReviewRoute: typeof ReviewRoute
   RosterRoute: typeof RosterRoute
@@ -246,8 +308,11 @@ export interface RootRouteChildren {
   WallRoute: typeof WallRoute
   AlertsAlertIdRoute: typeof AlertsAlertIdRoute
   CasesCaseIdRoute: typeof CasesCaseIdRoute
+  NamesSearchIdRoute: typeof NamesSearchIdRoute
   ProductsProductIdRoute: typeof ProductsProductIdRoute
+  WallSimulatorRoute: typeof WallSimulatorRoute
   CasesIndexRoute: typeof CasesIndexRoute
+  NamesIndexRoute: typeof NamesIndexRoute
   ProductsIndexRoute: typeof ProductsIndexRoute
 }
 
@@ -281,6 +346,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApprovalsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/cctv': {
+      id: '/cctv'
+      path: '/cctv'
+      fullPath: '/cctv'
+      preLoaderRoute: typeof CctvRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/collection': {
       id: '/collection'
       path: '/collection'
@@ -293,6 +365,13 @@ declare module '@tanstack/react-router' {
       path: '/feed'
       fullPath: '/feed'
       preLoaderRoute: typeof FeedRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/missions': {
+      id: '/missions'
+      path: '/missions'
+      fullPath: '/missions'
+      preLoaderRoute: typeof MissionsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/provider': {
@@ -358,6 +437,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof CasesCaseIdRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/names/': {
+      id: '/names/'
+      path: '/names'
+      fullPath: '/names/'
+      preLoaderRoute: typeof NamesIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/names/$searchId': {
+      id: '/names/$searchId'
+      path: '/names/$searchId'
+      fullPath: '/names/$searchId'
+      preLoaderRoute: typeof NamesSearchIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/products/': {
       id: '/products/'
       path: '/products'
@@ -372,6 +465,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ProductsProductIdRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/wall_/simulator': {
+      id: '/wall_/simulator'
+      path: '/wall/simulator'
+      fullPath: '/wall/simulator'
+      preLoaderRoute: typeof WallSimulatorRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -380,8 +480,10 @@ const rootRouteChildren: RootRouteChildren = {
   SectionRoute: SectionRoute,
   AdminRoute: AdminRoute,
   ApprovalsRoute: ApprovalsRoute,
+  CctvRoute: CctvRoute,
   CollectionRoute: CollectionRoute,
   FeedRoute: FeedRoute,
+  MissionsRoute: MissionsRoute,
   ProviderRoute: ProviderRoute,
   ReviewRoute: ReviewRoute,
   RosterRoute: RosterRoute,
@@ -390,8 +492,11 @@ const rootRouteChildren: RootRouteChildren = {
   WallRoute: WallRoute,
   AlertsAlertIdRoute: AlertsAlertIdRoute,
   CasesCaseIdRoute: CasesCaseIdRoute,
+  NamesSearchIdRoute: NamesSearchIdRoute,
   ProductsProductIdRoute: ProductsProductIdRoute,
+  WallSimulatorRoute: WallSimulatorRoute,
   CasesIndexRoute: CasesIndexRoute,
+  NamesIndexRoute: NamesIndexRoute,
   ProductsIndexRoute: ProductsIndexRoute,
 }
 export const routeTree = rootRouteImport
