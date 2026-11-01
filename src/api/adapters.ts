@@ -8,6 +8,22 @@
  * default is chosen to read as "not known" on screen, never as a made-up fact.
  */
 import type {
+  // E39
+  Disposal,
+  DisposalCertificate,
+  DisposalExecution,
+  DisposalItem,
+  DisposalStatus,
+  IntegrityCheck,
+  IntegrityRun,
+  IntegrityRunDetail,
+  RetentionItem,
+  RetentionSchedule,
+  ReviewHistoryEntry,
+  WallRendererToken,
+  WallZone,
+  WallZoneContent,
+  WallZones,
   ChecklistLine,
   NameCluster,
   NameMention,
@@ -78,9 +94,17 @@ import type {
   GazetteerDataset,
   GeoLocation,
   MapArea,
+  MapEvent,
   MapFeature,
   MapLayer,
   Place,
+  AcceptQuestionInput,
+  BriefFeedback,
+  FeedbackRating,
+  Question,
+  QuestionStatus,
+  Requirement,
+  RequirementStatus,
 } from './types'
 
 /** How a person is shown: their name if the directory knows them, else a short id. */
@@ -894,6 +918,8 @@ export function toApproval(a: ApprovalDto, name: NameOf, caseRef?: string): Appr
     steps,
     caseRef,
     scope,
+    subjectType: a.subjectType,
+    subjectId: a.subjectId,
   }
 }
 
@@ -1011,7 +1037,7 @@ export interface ProductDto {
   authorId: string
   status: string
   currentVersion: number
-  sentences: { order: number; text: string; supportRefs: string[] }[]
+  sentences: { order: number; text: string; supportRefs: string[]; section?: string | null }[]
   unsupportedSentences: number[]
   versions: {
     number: number
@@ -1053,7 +1079,11 @@ export function toBrief(p: ProductDto, name: NameOf): Brief {
     currentVersion: p.currentVersion,
     sentences: [...p.sentences]
       .sort((a, b) => a.order - b.order)
-      .map((s) => ({ text: s.text, supportRefs: s.supportRefs })),
+      .map((s) => ({
+        text: s.text,
+        supportRefs: s.supportRefs,
+        ...(s.section ? { section: s.section } : {}),
+      })),
     versions: p.versions.map((v) => ({
       number: v.number,
       createdById: v.createdBy,
@@ -1213,8 +1243,15 @@ export function toSourceRecord(s: SourceViewDto, name: NameOf): SourceRecord {
 export function toWatchFloor(raw: {
   kpis: WatchFloorSummary['kpis']
   sources: SourceDto[]
+  /** Placed cases and stories of the last week, which the gateway shapes from search's /geo/events. */
+  events?: MapEvent[]
 }): WatchFloorSummary {
-  return { kpis: raw.kpis, sources: raw.sources.map(toSourceHealth), events: [], onDuty: [] }
+  return {
+    kpis: raw.kpis,
+    sources: raw.sources.map(toSourceHealth),
+    events: raw.events ?? [],
+    onDuty: [],
+  }
 }
 
 // ---------------------------------------------------------------------------------------
@@ -1882,3 +1919,469 @@ export function toMapFeatures(c: MapFeatureCollectionDto): {
 }
 
 export type MapAreaDto = MapArea
+
+// ---------------------------------------------------------------- leadership questions and feedback (E37, ADR 0020)
+
+export interface RequirementDto {
+  id: string
+  title: string
+  detail: string | null
+  status: string
+  expiresAt: string
+  createdBy: string
+  createdAt: string
+  questionId: string | null
+  closedReason: string | null
+  closedAt: string | null
+  version: number
+}
+
+export interface QuestionDto {
+  id: string
+  text: string
+  context: string | null
+  neededBy: string | null
+  status: string
+  askedBy: string
+  askedAt: string
+  requirement: { id: string; title: string; status: string; expiresAt: string } | null
+  acceptedBy: string | null
+  acceptedAt: string | null
+  answer: string | null
+  briefIds: string[] | null
+  answeredBy: string | null
+  answeredAt: string | null
+  declinedReason: string | null
+  declinedBy: string | null
+  declinedAt: string | null
+  version: number
+}
+
+export interface FeedbackDto {
+  id: string
+  productId: string
+  productVersion: number
+  rating: string
+  comment: string | null
+  givenBy: string
+  givenAt: string
+  changedAt: string | null
+}
+
+const QUESTION_STATUSES: QuestionStatus[] = ['asked', 'accepted', 'answered', 'declined']
+const REQUIREMENT_STATUSES: RequirementStatus[] = ['active', 'expired', 'closed']
+const FEEDBACK_RATINGS: FeedbackRating[] = ['useful', 'partly_useful', 'not_useful']
+
+// An unknown requirement status is shown as expired: never as live when we can't tell.
+const requirementStatus = (s: string): RequirementStatus =>
+  REQUIREMENT_STATUSES.includes(s as RequirementStatus) ? (s as RequirementStatus) : 'expired'
+
+const personOrNull = (id: string | null, name: NameOf) => (id ? { id, name: name(id) } : null)
+
+export function toRequirement(r: RequirementDto, name: NameOf): Requirement {
+  return {
+    id: r.id,
+    title: r.title,
+    detail: r.detail,
+    status: requirementStatus(r.status),
+    expiresAt: r.expiresAt,
+    createdBy: { id: r.createdBy, name: name(r.createdBy) },
+    createdAt: r.createdAt,
+    questionId: r.questionId,
+    closedReason: r.closedReason,
+    etag: `"v${r.version}"`,
+  }
+}
+
+export function toQuestion(q: QuestionDto, name: NameOf): Question {
+  return {
+    id: q.id,
+    text: q.text,
+    context: q.context,
+    neededBy: q.neededBy,
+    // An unknown status is shown as asked: still waiting, never as settled.
+    status: QUESTION_STATUSES.includes(q.status as QuestionStatus)
+      ? (q.status as QuestionStatus)
+      : 'asked',
+    askedBy: { id: q.askedBy, name: name(q.askedBy) },
+    askedAt: q.askedAt,
+    requirement: q.requirement
+      ? { ...q.requirement, status: requirementStatus(q.requirement.status) }
+      : null,
+    acceptedBy: personOrNull(q.acceptedBy, name),
+    acceptedAt: q.acceptedAt,
+    answer: q.answer,
+    briefIds: q.briefIds ?? [],
+    answeredBy: personOrNull(q.answeredBy, name),
+    answeredAt: q.answeredAt,
+    declinedReason: q.declinedReason,
+    declinedBy: personOrNull(q.declinedBy, name),
+    declinedAt: q.declinedAt,
+    etag: `"v${q.version}"`,
+  }
+}
+
+export function toBriefFeedback(f: FeedbackDto, name: NameOf): BriefFeedback {
+  return {
+    id: f.id,
+    productId: f.productId,
+    productVersion: f.productVersion,
+    // An unknown rating is shown as partly useful rather than dropped.
+    rating: FEEDBACK_RATINGS.includes(f.rating as FeedbackRating)
+      ? (f.rating as FeedbackRating)
+      : 'partly_useful',
+    comment: f.comment,
+    givenBy: { id: f.givenBy, name: name(f.givenBy) },
+    givenAt: f.givenAt,
+    changedAt: f.changedAt,
+  }
+}
+
+/** The body of POST /questions/{id}/accept: an existing requirement, or a new one. */
+export function fromAcceptQuestionInput(input: AcceptQuestionInput) {
+  return 'requirementId' in input
+    ? { requirementId: input.requirementId }
+    : {
+        title: input.title?.trim() || undefined,
+        detail: input.detail?.trim() || undefined,
+        expiresAt: input.expiresAt,
+      }
+}
+
+// ---------------------------------------------------------------------------------------
+// E34: review history and the wall renderer (ADR 0019)
+// ---------------------------------------------------------------------------------------
+
+/** A case's CASE_REVIEW gates, newest first; a rejected gate is a return to the analyst. */
+export function toReviewHistory(gates: ApprovalDto[], name: NameOf): ReviewHistoryEntry[] {
+  return [...gates]
+    .sort((a, b) => b.requestedAt.localeCompare(a.requestedAt))
+    .map((a) => {
+      const d = a.decisions[a.decisions.length - 1]
+      return {
+        approvalId: a.id,
+        requestedAt: a.requestedAt,
+        outcome:
+          a.status === 'approved'
+            ? 'approved'
+            : a.status === 'rejected'
+              ? 'returned'
+              : a.status === 'expired'
+                ? 'expired'
+                : 'pending',
+        decidedBy: d ? name(d.decidedBy) : undefined,
+        decidedAt: d?.decidedAt,
+        comment: d?.comment ?? undefined,
+      }
+    })
+}
+
+export interface WallRendererTokenDto {
+  id: string
+  ref: string
+  label: string
+  issuedBy: string
+  issuedAt: string
+  revokedBy: string | null
+  revokedAt: string | null
+  lastSeenAt: string | null
+  version: number
+}
+
+export function toRendererToken(t: WallRendererTokenDto, name: NameOf): WallRendererToken {
+  return {
+    id: t.id,
+    ref: t.ref,
+    label: t.label,
+    issuedBy: name(t.issuedBy),
+    issuedAt: t.issuedAt,
+    revokedBy: t.revokedBy ? name(t.revokedBy) : undefined,
+    revokedAt: t.revokedAt ?? undefined,
+    lastSeenAt: t.lastSeenAt ?? undefined,
+  }
+}
+
+export interface WallZoneDto {
+  id: string
+  cells: number[]
+  content: WallContentKey
+  contextRef: string | null
+  muted: boolean
+}
+
+export interface WallZonesDto {
+  published: WallPublishedDto | null
+  visitorMode: boolean
+  rows: number
+  cols: number
+  zones: WallZoneDto[]
+  at: string
+}
+
+export interface WallZoneContentDto {
+  zone: WallZoneDto
+  source: WallZoneContent['source']
+  items: { kind: 'brief'; ref: string; title: string; detail: string | null; at: string | null }[]
+  counts: { key: string; label: string; count: number }[]
+  at: string
+}
+
+const toWallZone = (z: WallZoneDto): WallZone => ({
+  id: z.id,
+  cells: z.cells,
+  content: z.content,
+  contextRef: z.contextRef ?? undefined,
+  muted: z.muted,
+})
+
+/** A display has no account to look names up with, so who published stays as the id. */
+export function toWallZones(w: WallZonesDto): WallZones {
+  const p = w.published
+  return {
+    published: p
+      ? {
+          id: p.id,
+          ref: p.ref,
+          revision: p.layoutVersion,
+          preset: p.preset,
+          publishedBy: p.publishedBy,
+          publishedAt: p.publishedAt,
+        }
+      : undefined,
+    visitorMode: w.visitorMode,
+    rows: w.rows,
+    cols: w.cols,
+    zones: w.zones.map(toWallZone),
+    at: w.at,
+  }
+}
+
+export function toWallZoneContent(c: WallZoneContentDto): WallZoneContent {
+  return {
+    zone: toWallZone(c.zone),
+    source: c.source,
+    items: c.items.map((i) => ({
+      kind: i.kind,
+      ref: i.ref,
+      title: i.title,
+      detail: i.detail ?? undefined,
+      at: i.at ?? undefined,
+    })),
+    counts: c.counts,
+    at: c.at,
+  }
+}
+
+// ---------------------------------------------------------------------------------------
+// Retention, disposal and integrity (evidence, E39, ADR 0021)
+// ---------------------------------------------------------------------------------------
+
+export interface RetentionScheduleDto {
+  evidenceId: string
+  caseId: string | null
+  retentionClass: string
+  classLabel: string
+  placeholder: boolean
+  anchorAt: string
+  expiresAt: string | null
+  lockedUntil: string
+  dueAt: string | null
+  due: boolean
+  legalHold: boolean
+  legalHoldReason: string | null
+  legalHoldBy: string | null
+  legalHoldAt: string | null
+  disposalId: string | null
+  disposedAt: string | null
+  version: number
+}
+
+export interface RetentionItemDto {
+  retention: RetentionScheduleDto
+  contentType: string
+  sizeBytes: number
+  sha256: string
+  role: string | null
+  sourceUrl: string | null
+  status: RetentionItem['status']
+  registeredAt: string
+}
+
+export interface DisposalItemDto {
+  evidenceId: string
+  sha256: string
+  sizeBytes: number
+  contentType: string
+  caseId: string | null
+  retentionClass: string
+  dueAt: string
+  status: DisposalItem['status']
+  disposedAt: string | null
+  certificateId: string | null
+}
+
+export interface DisposalDto {
+  id: string
+  status: DisposalStatus
+  reason: string
+  requestedBy: string
+  requestedAt: string
+  approvalId: string | null
+  approvalType: string | null
+  settledAt: string | null
+  completedAt: string | null
+  items: DisposalItemDto[]
+  version: number
+}
+
+export interface DisposalExecutionDto {
+  disposal: DisposalDto
+  certificateId: string | null
+  disposed: string[]
+  blocked: { evidenceId: string; code: string; message: string }[]
+}
+
+export interface DisposalCertificateDto {
+  id: string
+  disposalId: string
+  approvalId: string
+  issuedAt: string
+  issuedBy: string
+  itemCount: number
+  sha256: string
+  previousSha256: string | null
+  verified: boolean
+  body: string
+}
+
+export interface IntegrityRunDto {
+  id: string
+  trigger: IntegrityRun['trigger']
+  startedBy: string
+  startedAt: string
+  finishedAt: string | null
+  rate: number
+  checked: number
+  passed: number
+  failed: number
+  unreachable: number
+}
+
+export interface IntegrityCheckDto {
+  evidenceId: string
+  checkedAt: string
+  outcome: IntegrityCheck['outcome']
+  expectedSha256: string
+  actualSha256: string | null
+  timestampStatus: string
+  detail: string | null
+}
+
+export function toRetentionSchedule(s: RetentionScheduleDto, name: NameOf): RetentionSchedule {
+  return {
+    evidenceId: s.evidenceId,
+    caseId: s.caseId ?? undefined,
+    retentionClass: s.retentionClass,
+    classLabel: s.classLabel,
+    placeholder: s.placeholder,
+    anchorAt: s.anchorAt,
+    expiresAt: s.expiresAt ?? undefined,
+    lockedUntil: s.lockedUntil,
+    dueAt: s.dueAt ?? undefined,
+    due: s.due,
+    legalHold: s.legalHold,
+    legalHoldReason: s.legalHoldReason ?? undefined,
+    legalHoldBy: s.legalHoldBy ? name(s.legalHoldBy) : undefined,
+    legalHoldAt: s.legalHoldAt ?? undefined,
+    disposalId: s.disposalId ?? undefined,
+    disposedAt: s.disposedAt ?? undefined,
+    etag: `"v${s.version}"`,
+  }
+}
+
+export function toRetentionItem(i: RetentionItemDto, name: NameOf): RetentionItem {
+  return {
+    schedule: toRetentionSchedule(i.retention, name),
+    contentType: i.contentType,
+    sizeBytes: i.sizeBytes,
+    sha256: i.sha256,
+    role: i.role ?? undefined,
+    sourceUrl: i.sourceUrl ?? undefined,
+    status: i.status,
+    registeredAt: i.registeredAt,
+  }
+}
+
+export function toDisposal(d: DisposalDto, name: NameOf): Disposal {
+  return {
+    id: d.id,
+    status: d.status,
+    reason: d.reason,
+    requesterId: d.requestedBy,
+    requesterName: name(d.requestedBy),
+    requestedAt: d.requestedAt,
+    approvalId: d.approvalId ?? undefined,
+    approvalType: (d.approvalType ?? undefined) as ApprovalType | undefined,
+    settledAt: d.settledAt ?? undefined,
+    completedAt: d.completedAt ?? undefined,
+    items: d.items.map((i) => ({
+      evidenceId: i.evidenceId,
+      sha256: i.sha256,
+      sizeBytes: i.sizeBytes,
+      contentType: i.contentType,
+      caseId: i.caseId ?? undefined,
+      retentionClass: i.retentionClass,
+      dueAt: i.dueAt,
+      status: i.status,
+      disposedAt: i.disposedAt ?? undefined,
+      certificateId: i.certificateId ?? undefined,
+    })),
+    etag: `"v${d.version}"`,
+  }
+}
+
+export function toDisposalExecution(e: DisposalExecutionDto, name: NameOf): DisposalExecution {
+  return {
+    disposal: toDisposal(e.disposal, name),
+    certificateId: e.certificateId ?? undefined,
+    disposed: e.disposed,
+    blocked: e.blocked,
+  }
+}
+
+export function toDisposalCertificate(
+  c: DisposalCertificateDto,
+  name: NameOf,
+): DisposalCertificate {
+  return {
+    id: c.id,
+    disposalId: c.disposalId,
+    approvalId: c.approvalId,
+    issuedAt: c.issuedAt,
+    issuedById: c.issuedBy,
+    issuedByName: name(c.issuedBy),
+    itemCount: c.itemCount,
+    sha256: c.sha256,
+    previousSha256: c.previousSha256 ?? undefined,
+    verified: c.verified,
+    body: c.body,
+  }
+}
+
+export function toIntegrityRun(r: IntegrityRunDto, name: NameOf): IntegrityRun {
+  return { ...r, startedBy: name(r.startedBy), finishedAt: r.finishedAt ?? undefined }
+}
+
+export function toIntegrityRunDetail(
+  d: { run: IntegrityRunDto; checks: IntegrityCheckDto[] },
+  name: NameOf,
+): IntegrityRunDetail {
+  return {
+    run: toIntegrityRun(d.run, name),
+    checks: d.checks.map((c) => ({
+      ...c,
+      actualSha256: c.actualSha256 ?? undefined,
+      detail: c.detail ?? undefined,
+    })),
+  }
+}

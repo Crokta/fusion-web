@@ -60,6 +60,13 @@ import {
   toOutcomes,
   toRecipient,
   fromLessonInput,
+  toReviewHistory,
+  toRendererToken,
+  toWallZones,
+  toWallZoneContent,
+  type WallRendererTokenDto,
+  type WallZonesDto,
+  type WallZoneContentDto,
   toCaptureRequest,
   toCaseMatrix,
   toCctvRequest,
@@ -79,16 +86,43 @@ import {
   toWallPublication,
   toWallState,
   toWatchFloor,
+  type FeedbackDto,
+  type QuestionDto,
+  type RequirementDto,
+  fromAcceptQuestionInput,
+  toBriefFeedback,
+  toQuestion,
+  toRequirement,
+  // E39
+  toDisposal,
+  toDisposalCertificate,
+  toDisposalExecution,
+  toIntegrityRun,
+  toIntegrityRunDetail,
+  toRetentionItem,
+  toRetentionSchedule,
+  type DisposalCertificateDto,
+  type DisposalDto,
+  type DisposalExecutionDto,
+  type IntegrityCheckDto,
+  type IntegrityRunDto,
+  type RetentionItemDto,
+  type RetentionScheduleDto,
 } from './adapters'
+
+type IntegrityRunDetailDto = { run: IntegrityRunDto; checks: IntegrityCheckDto[] }
 import type { FusionApi } from './contract'
 import { ApiError, toProblem } from './problem'
 import { session } from './session'
 import { sha256Hex } from '@/lib/sha256'
 import type {
+  RetentionClass,
   CctvRequest,
   DutyTier,
   FindingInput,
   Kpi,
+  MapBoundaries,
+  MapEvent,
   Me,
   MediaAnalysis,
   MediaScreening,
@@ -111,11 +145,20 @@ export const API_BASE = (import.meta.env.VITE_API_BASE ?? 'http://localhost:5100
 
 type Query = Record<string, string | undefined>
 
+/** reporting's review row (E34): how many times the case has been submitted. */
+interface ReviewDto {
+  caseId: string
+  submissions: number
+  previousOutcome: string | null
+}
+
 interface RequestOptions {
   method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
   query?: Query
   body?: unknown
   ifMatch?: string
+  /** Extra headers: a wall display's X-Wall-Token (E34). */
+  headers?: Record<string, string>
 }
 
 interface Raw<T> {
@@ -132,6 +175,7 @@ async function send<T>(path: string, opts: RequestOptions = {}): Promise<Raw<T>>
   if (token) headers.set('Authorization', `Bearer ${token}`)
   if (opts.body !== undefined) headers.set('Content-Type', 'application/json')
   if (opts.ifMatch) headers.set('If-Match', opts.ifMatch)
+  for (const [k, v] of Object.entries(opts.headers ?? {})) headers.set(k, v)
   // Mutations are idempotent so a retried click never applies twice.
   if (opts.method && opts.method !== 'GET') headers.set('Idempotency-Key', crypto.randomUUID())
 
@@ -318,11 +362,18 @@ async function cctvCall(path: string, opts?: RequestOptions): Promise<CctvReques
   return toCctvRequest(r, name, refs.get(r.caseId))
 }
 
+async function questionCall(path: string, opts: RequestOptions) {
+  const q = await request<QuestionDto>(path, opts)
+  return toQuestion(q, await nameOf([q.askedBy, q.acceptedBy, q.answeredBy, q.declinedBy]))
+}
+
 export const httpApi: FusionApi = {
   me: () => request<Me>('/me'),
 
   watchFloor: async () =>
-    toWatchFloor(await request<{ kpis: Kpi[]; sources: SourceDto[] }>('/watch-floor')),
+    toWatchFloor(
+      await request<{ kpis: Kpi[]; sources: SourceDto[]; events?: MapEvent[] }>('/watch-floor'),
+    ),
 
   feed: async (p) => {
     const page = await request<PageDto<StoryDto>>('/feed', {
@@ -587,7 +638,7 @@ export const httpApi: FusionApi = {
 
   briefs: async (p) => {
     const page = await request<PageDto<ProductDto>>('/products', {
-      query: { caseId: p?.caseId, limit: '100' },
+      query: { caseId: p?.caseId, status: p?.status?.join(','), limit: '100' },
     })
     const name = await nameOf(page.items.flatMap(briefPeople))
     return { items: page.items.map((b) => toBrief(b, name)), nextCursor: page.nextCursor }
@@ -661,11 +712,66 @@ export const httpApi: FusionApi = {
       ),
     )
     const name = await nameOf(page.items.map((a) => a.requestedBy))
+    // reporting counts submissions (E34); a role it refuses just goes without the count.
+    const counted = await request<PageDto<ReviewDto>>('/reviews', {
+      query: { assignee: 'me', limit: '200' },
+    }).catch(() => ({ items: [] as ReviewDto[], nextCursor: null }))
+    const byCase = new Map(counted.items.map((r) => [r.caseId, r]))
     return {
-      items: page.items.map((a, i) => toReviewItem(a, cases[i], name)),
+      items: page.items.map((a, i) => {
+        const item = toReviewItem(a, cases[i], name)
+        const r = byCase.get(item.caseId)
+        if (!r) return item
+        return {
+          ...item,
+          revision: r.submissions,
+          previousOutcome:
+            r.previousOutcome === 'approved' || r.previousOutcome === 'returned'
+              ? r.previousOutcome
+              : undefined,
+        }
+      }),
       nextCursor: page.nextCursor,
     }
   },
+  reviewHistory: async (caseId) => {
+    const page = await request<PageDto<ApprovalDto>>('/approvals', {
+      query: { caseId, type: 'CASE_REVIEW', limit: '50' },
+    })
+    const name = await nameOf(page.items.flatMap((a) => a.decisions.map((d) => d.decidedBy)))
+    return toReviewHistory(page.items, name)
+  },
+
+  wallRendererTokens: async () => {
+    const r = await request<{ items: WallRendererTokenDto[] }>('/wall/renderer-tokens')
+    const name = await nameOf(r.items.flatMap((t) => [t.issuedBy, t.revokedBy]))
+    return r.items.map((t) => toRendererToken(t, name))
+  },
+  issueWallRendererToken: async (label) => {
+    const r = await request<{ token: WallRendererTokenDto; secret: string }>(
+      '/wall/renderer-tokens',
+      { method: 'POST', body: { label } },
+    )
+    return { token: toRendererToken(r.token, await nameOf([r.token.issuedBy])), secret: r.secret }
+  },
+  revokeWallRendererToken: async (id) => {
+    const t = await request<WallRendererTokenDto>(`/wall/renderer-tokens/${enc(id)}/revoke`, {
+      method: 'POST',
+    })
+    return toRendererToken(t, await nameOf([t.issuedBy, t.revokedBy]))
+  },
+  wallZones: async (token) =>
+    toWallZones(
+      await request<WallZonesDto>('/wall/zones', {
+        headers: token ? { 'X-Wall-Token': token } : undefined,
+      }),
+    ),
+  wallZoneContent: async (zoneId, token) =>
+    toWallZoneContent(
+      await request<WallZoneContentDto>(`/wall/zones/${enc(zoneId)}/content`, {
+        headers: token ? { 'X-Wall-Token': token } : undefined,
+      }),
+    ),
   decideReview: async (caseId, decision, comment) => {
     const open = await request<PageDto<ApprovalDto>>('/approvals', {
       query: { caseId, type: 'CASE_REVIEW', status: 'pending' },
@@ -993,8 +1099,141 @@ export const httpApi: FusionApi = {
         },
       }),
     ),
-  mapAreas: (q) =>
+  mapAreas: (q, level) =>
     request<MapAreaDto[]>('/geo/areas', {
-      query: { from: q.from, to: q.to, layers: q.layers?.join(','), precision: q.precision },
+      query: { from: q.from, to: q.to, layers: q.layers?.join(','), precision: q.precision, level },
     }),
+  mapBoundaries: (level) => request<MapBoundaries>('/geo/boundaries', { query: { level } }),
+  // Leadership questions, requirements and feedback (intake, E37, ADR 0020).
+  questions: async (p) => {
+    const page = await request<PageDto<QuestionDto>>('/questions', {
+      query: { status: p?.status, briefId: p?.briefId, limit: '200' },
+    })
+    const name = await nameOf(
+      page.items.flatMap((q) => [q.askedBy, q.acceptedBy, q.answeredBy, q.declinedBy]),
+    )
+    return { items: page.items.map((q) => toQuestion(q, name)), nextCursor: page.nextCursor }
+  },
+  askQuestion: (input) => questionCall('/questions', { method: 'POST', body: input }),
+  acceptQuestion: (id, input, etag) =>
+    questionCall(`/questions/${enc(id)}/accept`, {
+      method: 'POST',
+      body: fromAcceptQuestionInput(input),
+      ifMatch: etag,
+    }),
+  answerQuestion: (id, answer, briefIds, etag) =>
+    questionCall(`/questions/${enc(id)}/answer`, {
+      method: 'POST',
+      body: { answer, briefIds },
+      ifMatch: etag,
+    }),
+  declineQuestion: (id, reason, etag) =>
+    questionCall(`/questions/${enc(id)}/decline`, {
+      method: 'POST',
+      body: { reason },
+      ifMatch: etag,
+    }),
+  requirements: async (p) => {
+    const page = await request<PageDto<RequirementDto>>('/requirements', {
+      query: { status: p?.status, limit: '200' },
+    })
+    const name = await nameOf(page.items.map((r) => r.createdBy))
+    return { items: page.items.map((r) => toRequirement(r, name)), nextCursor: page.nextCursor }
+  },
+  createRequirement: async (input) => {
+    const r = await request<RequirementDto>('/requirements', { method: 'POST', body: input })
+    return toRequirement(r, await nameOf([r.createdBy]))
+  },
+  briefFeedback: async (p) => {
+    const r = await request<{ items: FeedbackDto[] }>('/feedback', {
+      query: { productId: p?.productId },
+    })
+    const name = await nameOf(r.items.map((f) => f.givenBy))
+    return r.items.map((f) => toBriefFeedback(f, name))
+  },
+  giveFeedback: async (productId, rating, comment) => {
+    const f = await request<FeedbackDto>('/feedback', {
+      method: 'POST',
+      body: { productId, rating, comment: comment?.trim() || undefined },
+    })
+    return toBriefFeedback(f, await nameOf([f.givenBy]))
+  },
+
+  // Retention, legal holds, disposal with certificate and integrity runs (evidence, E39, ADR 0021).
+  retentionClasses: () => request<RetentionClass[]>('/evidence/retention/classes'),
+  retention: async (view) => {
+    const page = await request<PageDto<RetentionItemDto>>('/evidence/retention', {
+      query: { view, limit: '200' },
+    })
+    const name = await nameOf(page.items.map((i) => i.retention.legalHoldBy))
+    return { items: page.items.map((i) => toRetentionItem(i, name)), nextCursor: page.nextCursor }
+  },
+  placeLegalHold: async (evidenceId, reason, etag) => {
+    const s = await request<RetentionScheduleDto>(`/evidence/${enc(evidenceId)}/legal-hold`, {
+      method: 'POST',
+      body: { reason },
+      ifMatch: etag,
+    })
+    return toRetentionSchedule(s, await nameOf([s.legalHoldBy]))
+  },
+  releaseLegalHold: async (evidenceId, reason, etag) => {
+    const s = await request<RetentionScheduleDto>(
+      `/evidence/${enc(evidenceId)}/legal-hold/release`,
+      { method: 'POST', body: { reason }, ifMatch: etag },
+    )
+    return toRetentionSchedule(s, await nameOf([s.legalHoldBy]))
+  },
+  disposals: async (p) => {
+    const page = await request<PageDto<DisposalDto>>('/evidence/disposals', {
+      query: { status: p?.status, limit: '200' },
+    })
+    const name = await nameOf(page.items.map((d) => d.requestedBy))
+    return { items: page.items.map((d) => toDisposal(d, name)), nextCursor: page.nextCursor }
+  },
+  requestDisposal: async (evidenceIds, reason) => {
+    const d = await request<DisposalDto>('/evidence/disposals', {
+      method: 'POST',
+      body: { evidenceIds, reason },
+    })
+    return toDisposal(d, await nameOf([d.requestedBy]))
+  },
+  executeDisposal: async (id, etag) => {
+    const e = await request<DisposalExecutionDto>(`/evidence/disposals/${enc(id)}/execute`, {
+      method: 'POST',
+      ifMatch: etag,
+    })
+    return toDisposalExecution(e, await nameOf([e.disposal.requestedBy]))
+  },
+  disposalCertificates: async () => {
+    const page = await request<PageDto<DisposalCertificateDto>>('/evidence/disposal-certificates', {
+      query: { limit: '200' },
+    })
+    const name = await nameOf(page.items.map((c) => c.issuedBy))
+    return {
+      items: page.items.map((c) => toDisposalCertificate(c, name)),
+      nextCursor: page.nextCursor,
+    }
+  },
+  disposalCertificate: async (id) => {
+    const c = await request<DisposalCertificateDto>(`/evidence/disposal-certificates/${enc(id)}`)
+    return toDisposalCertificate(c, await nameOf([c.issuedBy]))
+  },
+  integrityRuns: async () => {
+    const page = await request<PageDto<IntegrityRunDto>>('/evidence/integrity/runs', {
+      query: { limit: '50' },
+    })
+    const name = await nameOf(page.items.map((r) => r.startedBy))
+    return { items: page.items.map((r) => toIntegrityRun(r, name)), nextCursor: page.nextCursor }
+  },
+  integrityRun: async (id) => {
+    const d = await request<IntegrityRunDetailDto>(`/evidence/integrity/runs/${enc(id)}`)
+    return toIntegrityRunDetail(d, await nameOf([d.run.startedBy]))
+  },
+  startIntegrityRun: async (rate) => {
+    const d = await request<IntegrityRunDetailDto>('/evidence/integrity/runs', {
+      method: 'POST',
+      body: { rate },
+    })
+    return toIntegrityRunDetail(d, await nameOf([d.run.startedBy]))
+  },
 }

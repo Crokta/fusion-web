@@ -15,12 +15,16 @@ import { Route as AdminRouteImport } from './routes/admin'
 import { Route as ApprovalsRouteImport } from './routes/approvals'
 import { Route as CctvRouteImport } from './routes/cctv'
 import { Route as CollectionRouteImport } from './routes/collection'
+import { Route as DeskRouteImport } from './routes/desk'
 import { Route as FeedRouteImport } from './routes/feed'
 import { Route as GazetteerRouteImport } from './routes/gazetteer'
+import { Route as LeadershipRouteImport } from './routes/leadership'
 import { Route as MapRouteImport } from './routes/map'
 import { Route as MissionsRouteImport } from './routes/missions'
 import { Route as OutcomesRouteImport } from './routes/outcomes'
 import { Route as ProviderRouteImport } from './routes/provider'
+import { Route as QuestionsRouteImport } from './routes/questions'
+import { Route as RetentionRouteImport } from './routes/retention'
 import { Route as ReviewRouteImport } from './routes/review'
 import { Route as RosterRouteImport } from './routes/roster'
 import { Route as SearchRouteImport } from './routes/search'
@@ -65,6 +69,11 @@ const CollectionRoute = CollectionRouteImport.update({
   path: '/collection',
   getParentRoute: () => rootRouteImport,
 } as any)
+const DeskRoute = DeskRouteImport.update({
+  id: '/desk',
+  path: '/desk',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const FeedRoute = FeedRouteImport.update({
   id: '/feed',
   path: '/feed',
@@ -73,6 +82,11 @@ const FeedRoute = FeedRouteImport.update({
 const GazetteerRoute = GazetteerRouteImport.update({
   id: '/gazetteer',
   path: '/gazetteer',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const LeadershipRoute = LeadershipRouteImport.update({
+  id: '/leadership',
+  path: '/leadership',
   getParentRoute: () => rootRouteImport,
 } as any)
 const MapRoute = MapRouteImport.update({
@@ -93,6 +107,16 @@ const OutcomesRoute = OutcomesRouteImport.update({
 const ProviderRoute = ProviderRouteImport.update({
   id: '/provider',
   path: '/provider',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const QuestionsRoute = QuestionsRouteImport.update({
+  id: '/questions',
+  path: '/questions',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const RetentionRoute = RetentionRouteImport.update({
+  id: '/retention',
+  path: '/retention',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ReviewRoute = ReviewRouteImport.update({
@@ -168,12 +192,16 @@ export interface FileRoutesByFullPath {
   '/approvals': typeof ApprovalsRoute
   '/cctv': typeof CctvRoute
   '/collection': typeof CollectionRoute
+  '/desk': typeof DeskRoute
   '/feed': typeof FeedRoute
   '/gazetteer': typeof GazetteerRoute
+  '/leadership': typeof LeadershipRoute
   '/map': typeof MapRoute
   '/missions': typeof MissionsRoute
   '/outcomes': typeof OutcomesRoute
   '/provider': typeof ProviderRoute
+  '/questions': typeof QuestionsRoute
+  '/retention': typeof RetentionRoute
   '/review': typeof ReviewRoute
   '/roster': typeof RosterRoute
   '/search': typeof SearchRoute
@@ -195,12 +223,16 @@ export interface FileRoutesByTo {
   '/approvals': typeof ApprovalsRoute
   '/cctv': typeof CctvRoute
   '/collection': typeof CollectionRoute
+  '/desk': typeof DeskRoute
   '/feed': typeof FeedRoute
   '/gazetteer': typeof GazetteerRoute
+  '/leadership': typeof LeadershipRoute
   '/map': typeof MapRoute
   '/missions': typeof MissionsRoute
   '/outcomes': typeof OutcomesRoute
   '/provider': typeof ProviderRoute
+  '/questions': typeof QuestionsRoute
+  '/retention': typeof RetentionRoute
   '/review': typeof ReviewRoute
   '/roster': typeof RosterRoute
   '/search': typeof SearchRoute
@@ -223,12 +255,16 @@ export interface FileRoutesById {
   '/approvals': typeof ApprovalsRoute
   '/cctv': typeof CctvRoute
   '/collection': typeof CollectionRoute
+  '/desk': typeof DeskRoute
   '/feed': typeof FeedRoute
   '/gazetteer': typeof GazetteerRoute
+  '/leadership': typeof LeadershipRoute
   '/map': typeof MapRoute
   '/missions': typeof MissionsRoute
   '/outcomes': typeof OutcomesRoute
   '/provider': typeof ProviderRoute
+  '/questions': typeof QuestionsRoute
+  '/retention': typeof RetentionRoute
   '/review': typeof ReviewRoute
   '/roster': typeof RosterRoute
   '/search': typeof SearchRoute
@@ -252,12 +288,16 @@ export interface FileRouteTypes {
     | '/approvals'
     | '/cctv'
     | '/collection'
+    | '/desk'
     | '/feed'
     | '/gazetteer'
+    | '/leadership'
     | '/map'
     | '/missions'
     | '/outcomes'
     | '/provider'
+    | '/questions'
+    | '/retention'
     | '/review'
     | '/roster'
     | '/search'
@@ -279,12 +319,16 @@ export interface FileRouteTypes {
     | '/approvals'
     | '/cctv'
     | '/collection'
+    | '/desk'
     | '/feed'
     | '/gazetteer'
+    | '/leadership'
     | '/map'
     | '/missions'
     | '/outcomes'
     | '/provider'
+    | '/questions'
+    | '/retention'
     | '/review'
     | '/roster'
     | '/search'
@@ -306,12 +350,16 @@ export interface FileRouteTypes {
     | '/approvals'
     | '/cctv'
     | '/collection'
+    | '/desk'
     | '/feed'
     | '/gazetteer'
+    | '/leadership'
     | '/map'
     | '/missions'
     | '/outcomes'
     | '/provider'
+    | '/questions'
+    | '/retention'
     | '/review'
     | '/roster'
     | '/search'
@@ -334,12 +382,16 @@ export interface RootRouteChildren {
   ApprovalsRoute: typeof ApprovalsRoute
   CctvRoute: typeof CctvRoute
   CollectionRoute: typeof CollectionRoute
+  DeskRoute: typeof DeskRoute
   FeedRoute: typeof FeedRoute
   GazetteerRoute: typeof GazetteerRoute
+  LeadershipRoute: typeof LeadershipRoute
   MapRoute: typeof MapRoute
   MissionsRoute: typeof MissionsRoute
   OutcomesRoute: typeof OutcomesRoute
   ProviderRoute: typeof ProviderRoute
+  QuestionsRoute: typeof QuestionsRoute
+  RetentionRoute: typeof RetentionRoute
   ReviewRoute: typeof ReviewRoute
   RosterRoute: typeof RosterRoute
   SearchRoute: typeof SearchRoute
@@ -399,6 +451,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof CollectionRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/desk': {
+      id: '/desk'
+      path: '/desk'
+      fullPath: '/desk'
+      preLoaderRoute: typeof DeskRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/feed': {
       id: '/feed'
       path: '/feed'
@@ -411,6 +470,13 @@ declare module '@tanstack/react-router' {
       path: '/gazetteer'
       fullPath: '/gazetteer'
       preLoaderRoute: typeof GazetteerRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/leadership': {
+      id: '/leadership'
+      path: '/leadership'
+      fullPath: '/leadership'
+      preLoaderRoute: typeof LeadershipRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/map': {
@@ -439,6 +505,20 @@ declare module '@tanstack/react-router' {
       path: '/provider'
       fullPath: '/provider'
       preLoaderRoute: typeof ProviderRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/questions': {
+      id: '/questions'
+      path: '/questions'
+      fullPath: '/questions'
+      preLoaderRoute: typeof QuestionsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/retention': {
+      id: '/retention'
+      path: '/retention'
+      fullPath: '/retention'
+      preLoaderRoute: typeof RetentionRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/review': {
@@ -542,12 +622,16 @@ const rootRouteChildren: RootRouteChildren = {
   ApprovalsRoute: ApprovalsRoute,
   CctvRoute: CctvRoute,
   CollectionRoute: CollectionRoute,
+  DeskRoute: DeskRoute,
   FeedRoute: FeedRoute,
   GazetteerRoute: GazetteerRoute,
+  LeadershipRoute: LeadershipRoute,
   MapRoute: MapRoute,
   MissionsRoute: MissionsRoute,
   OutcomesRoute: OutcomesRoute,
   ProviderRoute: ProviderRoute,
+  QuestionsRoute: QuestionsRoute,
+  RetentionRoute: RetentionRoute,
   ReviewRoute: ReviewRoute,
   RosterRoute: RosterRoute,
   SearchRoute: SearchRoute,

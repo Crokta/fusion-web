@@ -242,7 +242,7 @@ function SituationPanel({ events, loading }: { events?: MapEvent[]; loading: boo
             <NigeriaMap events={events ?? []} selectedId={selected?.id} onSelect={onSelect} />
           )}
           <div className="pointer-events-none absolute bottom-3 left-4 text-[10.5px] text-ink-faint">
-            Stylised map · tile server arrives with geo epic
+            Cases and stories placed in the last 7 days · the full map is under Map
           </div>
           {hover && (
             <div className="absolute top-3 left-4 rounded-md border border-line-strong bg-void/85 px-2.5 py-1.5 text-xs backdrop-blur">

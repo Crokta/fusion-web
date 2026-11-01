@@ -1,26 +1,31 @@
-import type { FeatureCollection } from 'geojson'
-import type { GeoJSONSource } from 'maplibre-gl'
+import type { FeatureCollection, Geometry } from 'geojson'
+import type { FilterSpecification, GeoJSONSource } from 'maplibre-gl'
 import {
   Map as MapLibre,
   Marker,
   NavigationControl,
+  Popup,
   setWorkerUrl,
   type MapLayerMouseEvent,
   type MapMouseEvent,
 } from 'maplibre-gl'
 import 'maplibre-gl/dist/maplibre-gl.css'
+import './geo.css'
 import workerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?url'
 import { useEffect, useRef, useState } from 'react'
 import type { MapArea, MapFeature } from '@/api/types'
 import { cn } from '@/lib/cn'
 import { useTheme } from '@/lib/theme'
 import { NIGERIA_BOUNDS, basemapStyle, probeTileServer, type TileServer } from './basemap'
+import { CHOROPLETH_HUE, opacityExpression, type CountProperties } from './choropleth'
 import { LAYER_COLOUR } from './parts'
 
 export interface GeoMapProps {
   features?: MapFeature[]
   /** Counts by state: drawn as circles sized by count instead of the points. */
   areas?: MapArea[]
+  /** Counts joined to state or LGA polygons (ADR 0022): drawn as a choropleth instead of circles. */
+  choropleth?: { data: FeatureCollection<Geometry, CountProperties>; breaks: number[] }
   selectedId?: string
   onSelect?: (feature: MapFeature | undefined) => void
   /** west, south, east, north; called when the view settles. */
@@ -42,6 +47,7 @@ setWorkerUrl(workerUrl)
 export function GeoMap({
   features = [],
   areas,
+  choropleth,
   selectedId,
   onSelect,
   onBoundsChange,
@@ -85,6 +91,27 @@ export function GeoMap({
     m.on('load', () => {
       m.addSource('features', { type: 'geojson', data: empty })
       m.addSource('areas', { type: 'geojson', data: empty })
+      m.addSource('boundaries', { type: 'geojson', data: empty })
+      // Under the circles and points, over the basemap: polygons filled by count, with thin outlines.
+      m.addLayer({
+        id: 'boundaries-fill',
+        type: 'fill',
+        source: 'boundaries',
+        paint: { 'fill-color': CHOROPLETH_HUE, 'fill-opacity': 0 },
+      })
+      m.addLayer({
+        id: 'boundaries-line',
+        type: 'line',
+        source: 'boundaries',
+        paint: { 'line-color': CHOROPLETH_HUE, 'line-opacity': 0.35, 'line-width': 0.6 },
+      })
+      m.addLayer({
+        id: 'boundaries-hover',
+        type: 'line',
+        source: 'boundaries',
+        filter: ['==', ['get', 'code'], ''],
+        paint: { 'line-color': '#ffffff', 'line-width': 2 },
+      })
       m.addLayer({
         id: 'areas',
         type: 'circle',
@@ -126,6 +153,24 @@ export function GeoMap({
       if (handlers.current.onPick) handlers.current.onPick(e.lngLat.lat, e.lngLat.lng)
       else handlers.current.onSelect?.(undefined)
     })
+    // The choropleth's hover: outline the area and say what it counts.
+    const popup = new Popup({
+      closeButton: false,
+      closeOnClick: false,
+      offset: 8,
+      className: 'geo-tip',
+    })
+    const noHover: FilterSpecification = ['==', ['get', 'code'], '']
+    m.on('mousemove', 'boundaries-fill', (e: MapLayerMouseEvent) => {
+      const p = e.features?.[0]?.properties as CountProperties | undefined
+      if (!p) return
+      m.setFilter('boundaries-hover', ['==', ['get', 'code'], p.code])
+      popup.setLngLat(e.lngLat).setDOMContent(tooltip(p)).addTo(m)
+    })
+    m.on('mouseleave', 'boundaries-fill', () => {
+      m.setFilter('boundaries-hover', noHover)
+      popup.remove()
+    })
     m.on('mouseenter', 'features', () => (m.getCanvas().style.cursor = 'pointer'))
     m.on('mouseleave', 'features', () => (m.getCanvas().style.cursor = ''))
     const report = () => {
@@ -163,8 +208,15 @@ export function GeoMap({
             })),
           },
     )
+    m.getSource<GeoJSONSource>('boundaries')?.setData(choropleth?.data ?? empty)
+    m.setPaintProperty(
+      'boundaries-fill',
+      'fill-opacity',
+      choropleth ? (opacityExpression(choropleth.breaks) as never) : 0,
+    )
+    m.setPaintProperty('boundaries-line', 'line-opacity', choropleth ? 0.35 : 0)
     m.getSource<GeoJSONSource>('areas')?.setData(
-      areas
+      areas && !choropleth
         ? {
             type: 'FeatureCollection',
             features: areas.map((a) => ({
@@ -175,7 +227,7 @@ export function GeoMap({
           }
         : empty,
     )
-  }, [features, areas, selectedId, ready])
+  }, [features, areas, choropleth, selectedId, ready])
 
   // By value, so a parent passing a fresh object each render does not re-centre the map.
   const [mLat, mLon, mZoom] = [marker?.lat, marker?.lon, marker?.zoom]
@@ -203,5 +255,21 @@ export function GeoMap({
 }
 
 const empty: FeatureCollection = { type: 'FeatureCollection', features: [] }
+
+/** Built as DOM, not HTML, so a place name can never inject markup. */
+function tooltip(p: CountProperties): HTMLElement {
+  const el = document.createElement('div')
+  const title = document.createElement('div')
+  title.className = 'font-medium text-ink'
+  title.textContent = p.parentName ? `${p.name}, ${p.parentName}` : p.name
+  const counts = document.createElement('div')
+  counts.className = 'text-ink-muted'
+  counts.textContent =
+    p.total === 0
+      ? 'Nothing placed'
+      : `${p.cases} ${p.cases === 1 ? 'case' : 'cases'} · ${p.stories} ${p.stories === 1 ? 'story' : 'stories'}`
+  el.append(title, counts)
+  return el
+}
 
 export default GeoMap

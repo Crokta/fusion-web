@@ -7,6 +7,7 @@ import type {
   MissionTemplateInput,
   Alert,
   Brief,
+  ReviewHistoryEntry,
   BriefRecipient,
   Lesson,
   LessonInput,
@@ -41,7 +42,10 @@ import type {
 } from '../types'
 import * as fx from './fixtures'
 import { nameMocks } from './names'
+import { leadershipMocks } from './leadership'
+import { displayMocks } from './display'
 import { geoMocks } from './geo'
+import { retentionMocks } from './retention'
 
 /**
  * In-memory gateway. It keeps the same rules the real services enforce — reviewer is not the
@@ -122,6 +126,8 @@ const db = {
   shifts: [] as DutyShift[],
   messages: [] as Delivery[],
   reviews: clone(fx.reviews),
+  /** Review decisions made in this session, per case, newest first (E34). */
+  reviewHistory: new Map<string, ReviewHistoryEntry[]>(),
   approvals: clone(fx.approvals),
   policies: clone(fx.policies),
   audit: clone(fx.auditEvents),
@@ -596,7 +602,19 @@ function settleCctv(approvalId: string, status: string) {
   cctvBump(r)
 }
 
+// Retention, legal holds, disposal and integrity runs (E39, ADR 0021).
+const retention = retentionMocks({
+  delay,
+  refuse,
+  requireRole,
+  audit,
+  me,
+  role: () => session.getActiveRole(),
+  approvals: () => db.approvals,
+})
+
 export const mockApi: FusionApi = {
+  ...retention.api,
   // Geo: gazetteer, locations and map layers (E32, ADR 0018).
   ...geoMocks({ delay, refuse, audit, role: () => session.getActiveRole(), me }),
   // Name-of-interest searches (E30, ADR 0013).
@@ -608,6 +626,20 @@ export const mockApi: FusionApi = {
     role: () => session.getActiveRole(),
     me,
     piOn: () => !!db.policies.find((p) => p.key === 'pi_search_enabled')?.value,
+  }),
+  // Leadership questions, requirements and feedback (E37, ADR 0020).
+  ...leadershipMocks({ delay, refuse, requireRole, audit, me, briefs: () => db.briefs }),
+  // Review history and the wall renderer (E34, ADR 0019).
+  ...displayMocks({
+    delay,
+    refuse,
+    requireRole,
+    audit,
+    me,
+    briefs: () => db.briefs,
+    wall: () => db.wall,
+    layoutPublications: () => db.layoutPublications,
+    history: (caseId) => db.reviewHistory.get(caseId) ?? [],
   }),
   me: () =>
     delay<Me>(() => ({
@@ -1372,7 +1404,11 @@ export const mockApi: FusionApi = {
 
   briefs: (p) =>
     delay(() => ({
-      items: p?.caseId ? db.briefs.filter((b) => b.caseId === p.caseId) : db.briefs,
+      items: db.briefs.filter(
+        (b) =>
+          (!p?.caseId || b.caseId === p.caseId) &&
+          (!p?.status?.length || p.status.includes(b.status)),
+      ),
       nextCursor: null,
     })),
   brief: (id) => delay(() => briefAt(id)),
@@ -1395,12 +1431,17 @@ export const mockApi: FusionApi = {
         status: 'draft',
         currentVersion: 1,
         sentences: [
-          ...c.findings.map((f) => ({ text: f.statement, supportRefs: [`finding:${f.id}`] })),
+          ...c.findings.map((f) => ({
+            text: f.statement,
+            supportRefs: [`finding:${f.id}`],
+            section: 'Key judgements',
+          })),
           ...c.claims
             .filter((x) => x.outcome !== 'unassessed')
             .map((x) => ({
               text: `The claim that ${x.text} is ${x.outcome}.`,
               supportRefs: [`claim:${x.id}`],
+              section: 'Claims assessed',
             })),
         ],
         versions: [{ number: 1, createdBy: devName(), createdAt: now, hasPdf: false }],
@@ -1626,6 +1667,17 @@ export const mockApi: FusionApi = {
       if (r.authorId === session.getUserId())
         refuse('self_approval_forbidden', 'Reviewer cannot be the author', 403)
       db.reviews = db.reviews.filter((x) => x.caseId !== caseId)
+      db.reviewHistory.set(caseId, [
+        {
+          approvalId: crypto.randomUUID(),
+          requestedAt: r.submittedAt,
+          outcome: decision === 'approve' ? 'approved' : 'returned',
+          decidedBy: devName(),
+          decidedAt: new Date().toISOString(),
+          comment: comment || undefined,
+        },
+        ...(db.reviewHistory.get(caseId) ?? []),
+      ])
       const c = db.cases.find((x) => x.id === caseId)
       if (c) c.state = decision === 'approve' ? 'approved' : 'returned'
       audit('allowed', 'review.decide', r.caseRef, `${decision}: ${comment}`)
@@ -1656,6 +1708,7 @@ export const mockApi: FusionApi = {
       if (decision === 'refuse') a.status = 'refused'
       else if (a.steps.every((s) => s.decision === 'approve')) a.status = 'approved'
       settleCctv(a.id, a.status)
+      retention.settle(a.id, a.status)
       audit('allowed', 'approval.decide', `${a.id.toUpperCase()} ${a.type}`, comment)
       return a
     }),

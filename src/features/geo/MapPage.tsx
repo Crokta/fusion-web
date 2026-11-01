@@ -1,8 +1,8 @@
 import { Link } from '@tanstack/react-router'
 import { ExternalLink, Layers, Map as MapIcon, MapPin, ShieldAlert } from 'lucide-react'
-import { useState } from 'react'
-import { useMapAreas, useMapFeatures, useMapLayers } from '@/api/queries'
-import type { LocationPrecision, MapFeature, MapLayerKey, MapQuery } from '@/api/types'
+import { useMemo, useState } from 'react'
+import { useMapAreas, useMapBoundaries, useMapFeatures, useMapLayers } from '@/api/queries'
+import type { AreaLevel, LocationPrecision, MapFeature, MapLayerKey, MapQuery } from '@/api/types'
 import { can, useAuth } from '@/auth/AuthProvider'
 import {
   EmptyState,
@@ -15,11 +15,19 @@ import {
 import { cn } from '@/lib/cn'
 import { relative } from '@/lib/format'
 import { ATTRIBUTION } from './basemap'
+import {
+  CHOROPLETH_HUE,
+  CHOROPLETH_STEPS,
+  breakLabels,
+  choroplethBreaks,
+  stepIndex,
+  withCounts,
+} from './choropleth'
 import { GeoMap } from './LazyGeoMap'
 import { LAYER_COLOUR, OriginBadge, PrecisionBadge } from './parts'
 
 type Window = '24h' | '7d' | '30d' | 'all'
-type View = 'points' | 'areas'
+type View = 'points' | AreaLevel
 
 const WINDOW_HOURS: Record<Exclude<Window, 'all'>, number> = {
   '24h': 24,
@@ -33,7 +41,8 @@ const startOf = (w: Window) =>
 /**
  * The map (architecture §7.1, ADR 0018): cases and stories where they happened, as layers. Each
  * layer shows only what the active role reads at its owner; points are filled when confirmed and
- * hollow when estimated. "By state" counts them per state instead.
+ * hollow when estimated. "By state" and "By LGA" count them per area instead, shaded on the
+ * state or LGA polygons (ADR 0022); without polygons, as circles sized by count.
  */
 export function MapPage() {
   const { activeRole } = useAuth()
@@ -55,7 +64,15 @@ export function MapPage() {
   }
   const ready = !!layers.data && shown.length > 0
   const features = useMapFeatures({ ...filters, bbox }, ready && view === 'points' && !!bbox)
-  const areas = useMapAreas(filters, ready && view === 'areas')
+  const level: AreaLevel = view === 'lga' ? 'lga' : 'state'
+  const areas = useMapAreas(filters, ready && view !== 'points', level)
+  const boundaries = useMapBoundaries(level, can.readMap(activeRole) && view !== 'points')
+  const choropleth = useMemo(() => {
+    if (view === 'points' || !areas.data || !boundaries.data?.features.length) return undefined
+    const data = withCounts(boundaries.data, areas.data)
+    const max = Math.max(0, ...data.features.map((f) => f.properties.total))
+    return { data, breaks: choroplethBreaks(max), max }
+  }, [view, areas.data, boundaries.data])
 
   if (!can.readMap(activeRole))
     return (
@@ -139,7 +156,8 @@ export function MapPage() {
           }}
           options={[
             { value: 'points', label: 'Points' },
-            { value: 'areas', label: 'By state' },
+            { value: 'state', label: 'By state' },
+            { value: 'lga', label: 'By LGA' },
           ]}
         />
       </div>
@@ -149,12 +167,21 @@ export function MapPage() {
           <GeoMap
             className="min-h-[480px] flex-1"
             features={inView}
-            areas={view === 'areas' ? (areas.data ?? []) : undefined}
+            areas={view !== 'points' ? (areas.data ?? []) : undefined}
+            choropleth={choropleth}
             selectedId={selected?.id}
             onSelect={setSelected}
             onBoundsChange={setBbox}
           />
-          <p className="mt-1.5 text-[10.5px] text-ink-faint">{ATTRIBUTION}</p>
+          {choropleth && choropleth.max > 0 && (
+            <Legend breaks={choropleth.breaks} max={choropleth.max} level={level} />
+          )}
+          <p className="mt-1.5 text-[10.5px] text-ink-faint">
+            {ATTRIBUTION}
+            {view !== 'points' && boundaries.data?.features.length
+              ? ' · Boundaries © OSGOF, eHealth Africa and UNCS via OCHA, CC BY-IGO'
+              : ''}
+          </p>
         </div>
         <div className="flex min-w-0 flex-col gap-4">
           {selected && <Selected feature={selected} />}
@@ -213,7 +240,11 @@ export function MapPage() {
               )}
             </Panel>
           ) : (
-            <Panel title="By state" icon={MapIcon} bodyClassName="p-0">
+            <Panel
+              title={view === 'lga' ? 'By LGA' : 'By state'}
+              icon={MapIcon}
+              bodyClassName="p-0"
+            >
               {areas.error ? (
                 <ErrorNotice error={areas.error} onRetry={() => areas.refetch()} />
               ) : !areas.data ? (
@@ -224,7 +255,7 @@ export function MapPage() {
                 <table className="w-full text-[12px]">
                   <thead className="text-left text-[10.5px] text-ink-faint uppercase">
                     <tr>
-                      <th className="px-4 py-2 font-medium">State</th>
+                      <th className="px-4 py-2 font-medium">{view === 'lga' ? 'LGA' : 'State'}</th>
                       <th className="px-2 py-2 text-right font-medium">Cases</th>
                       <th className="px-2 py-2 text-right font-medium">Stories</th>
                       <th className="px-4 py-2 text-right font-medium">Estimated</th>
@@ -233,7 +264,12 @@ export function MapPage() {
                   <tbody className="divide-y divide-line-soft">
                     {areas.data.map((a) => (
                       <tr key={a.placeId}>
-                        <td className="px-4 py-2 text-ink">{a.name}</td>
+                        <td className="px-4 py-2 text-ink">
+                          {a.name}
+                          {a.parent && (
+                            <span className="ml-1.5 text-[11px] text-ink-muted">{a.parent}</span>
+                          )}
+                        </td>
                         <td className="px-2 py-2 text-right font-mono">{a.cases}</td>
                         <td className="px-2 py-2 text-right font-mono">{a.stories}</td>
                         <td className="px-4 py-2 text-right font-mono text-ink-muted">
@@ -248,6 +284,29 @@ export function MapPage() {
           )}
         </div>
       </div>
+    </div>
+  )
+}
+
+/** The choropleth's key: one hue, lighter to darker as the count rises. */
+function Legend({ breaks, max, level }: { breaks: number[]; max: number; level: AreaLevel }) {
+  const labels = breakLabels(breaks, max)
+  return (
+    <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-ink-muted">
+      <span>Cases and stories placed, per {level === 'lga' ? 'LGA' : 'state'}:</span>
+      {labels.map((label, i) => (
+        <span key={label} className="inline-flex items-center gap-1.5">
+          <span
+            className="inline-block size-3 rounded-[3px] border"
+            style={{
+              borderColor: CHOROPLETH_HUE,
+              background: CHOROPLETH_HUE,
+              opacity: (CHOROPLETH_STEPS[stepIndex(i, breaks.length)] ?? 0) + 0.15,
+            }}
+          />
+          <span className="font-mono">{label}</span>
+        </span>
+      ))}
     </div>
   )
 }

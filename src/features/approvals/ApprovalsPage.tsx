@@ -1,4 +1,5 @@
-import { Check, Clock3, Hourglass, Stamp, X } from 'lucide-react'
+import { Link } from '@tanstack/react-router'
+import { Check, Clock3, Hourglass, Stamp, UserSearch, X } from 'lucide-react'
 import { useState } from 'react'
 import { describeError } from '@/api'
 import { useApprovals, useDecideApproval } from '@/api/queries'
@@ -9,7 +10,7 @@ import {
   type ApprovalType,
   type Role,
 } from '@/api/types'
-import { useAuth } from '@/auth/AuthProvider'
+import { can, useAuth } from '@/auth/AuthProvider'
 import { Modal } from '@/components/Overlay'
 import { useToast } from '@/components/Toaster'
 import {
@@ -43,7 +44,7 @@ const GATES: Record<ApprovalType, { tone: Tone; rule: string }> = {
   },
   RETENTION_EXTENSION: {
     tone: 'neutral',
-    rule: 'Centre lead extends the retention class of held evidence.',
+    rule: 'Evidence officer, then Centre lead: keeping evidence longer, or disposing of evidence past its retention.',
   },
 }
 
@@ -68,6 +69,25 @@ export function decisionBlock(a: Approval, userId: string, role: Role): string |
   const ok = step.role === role || (step.role === 'reviewer' && role === 'supervisor')
   if (!ok) return `Needs ${stepRoleLabel(step.role)}`
   return null
+}
+
+/** A PI_SEARCH approval is for a name search; its subject id is the search's (ADR 0013). */
+function nameSearchId(a: Approval): string | undefined {
+  return a.type === 'PI_SEARCH' && a.subjectType === 'name_search' ? a.subjectId : undefined
+}
+
+function NameSearchLink({ searchId }: { searchId: string }) {
+  return (
+    <Link
+      to="/names/$searchId"
+      params={{ searchId }}
+      className="inline-flex items-center gap-1 text-[11.5px] font-medium text-violet underline-offset-2 hover:text-ink hover:underline"
+      onClick={(e) => e.stopPropagation()}
+    >
+      <UserSearch className="size-3.5" aria-hidden />
+      Open the name search
+    </Link>
+  )
 }
 
 export function ApprovalsPage() {
@@ -178,6 +198,9 @@ export function ApprovalsPage() {
                         {a.id.toUpperCase()}
                       </span>
                       {a.caseRef && <CaseLink caseRef={a.caseRef} />}
+                      {nameSearchId(a) && can.readPiResults(activeRole) && (
+                        <NameSearchLink searchId={nameSearchId(a)!} />
+                      )}
                     </div>
                     <h3 className="mt-2 text-[14px] leading-snug font-semibold text-ink">
                       {a.subject}

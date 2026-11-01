@@ -7,7 +7,14 @@ import {
   type MapFeatureCollectionDto,
 } from '@/api/adapters'
 import { basemapStyle } from '@/features/geo/basemap'
+import {
+  breakLabels,
+  choroplethBreaks,
+  opacityExpression,
+  withCounts,
+} from '@/features/geo/choropleth'
 import { kindLabel, placeContext } from '@/features/geo/parts'
+import type { MapBoundaries } from '@/api/types'
 
 // Geo (E32, ADR 0018): search's gazetteer and map DTOs, and the basemap style.
 
@@ -156,5 +163,75 @@ describe('basemap style', () => {
     )
     expect(used).toMatch(/Noto Sans Medium/)
     expect(used).toMatch(/Noto Sans Italic/)
+  })
+})
+
+describe('choropleth (ADR 0022)', () => {
+  const boundaries: MapBoundaries = {
+    type: 'FeatureCollection',
+    features: [
+      {
+        type: 'Feature',
+        id: 'NG008011',
+        properties: {
+          code: 'NG008011',
+          name: 'Gwoza',
+          level: 2,
+          parentCode: 'NG008',
+          parentName: 'Borno',
+        },
+        geometry: { type: 'MultiPolygon', coordinates: [] },
+      },
+      {
+        type: 'Feature',
+        id: 'NG008021',
+        properties: {
+          code: 'NG008021',
+          name: 'Maiduguri',
+          level: 2,
+          parentCode: 'NG008',
+          parentName: 'Borno',
+        },
+        geometry: { type: 'MultiPolygon', coordinates: [] },
+      },
+    ],
+  }
+
+  it('joins counts to polygons on the P-code, and an area with nothing placed counts 0', () => {
+    const joined = withCounts(boundaries, [
+      {
+        placeId: 'NG008011',
+        code: 'NG008011',
+        name: 'Gwoza',
+        country: 'NG',
+        lat: 11,
+        lon: 13,
+        cases: 2,
+        stories: 1,
+        estimated: 0,
+        level: 'lga',
+        parent: 'Borno',
+      },
+    ])
+    expect(joined.features.map((f) => [f.properties.code, f.properties.total])).toEqual([
+      ['NG008011', 3],
+      ['NG008021', 0],
+    ])
+    expect(joined.features[0]!.properties.parentName).toBe('Borno')
+  })
+
+  it('gives small counts a class each and splits larger ranges into five', () => {
+    expect(choroplethBreaks(0)).toEqual([])
+    expect(choroplethBreaks(3)).toEqual([1, 2, 3])
+    expect(breakLabels(choroplethBreaks(3), 3)).toEqual(['1', '2', '3'])
+    const breaks = choroplethBreaks(41)
+    expect(breaks).toHaveLength(5)
+    expect(breaks[0]).toBe(1)
+    expect(breakLabels(breaks, 41).at(-1)).toMatch(/\+$/)
+  })
+
+  it('leaves an empty area transparent and steps one hue darker per class', () => {
+    expect(opacityExpression([1, 2])).toEqual(['step', ['get', 'total'], 0, 1, 0.16, 2, 0.8])
+    expect(opacityExpression([])).toEqual(['literal', 0])
   })
 })

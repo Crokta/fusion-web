@@ -26,6 +26,7 @@ import { relative } from '@/lib/format'
 import { useNow } from '@/lib/hooks'
 import { screenLabel } from '@/lib/wall-model'
 import { WallGrid } from './WallGrid'
+import { DisplayTokensPanel } from './DisplayTokensPanel'
 
 /**
  * What the wall controller says the physical wall shows. Until the AV vendor's hardware is
@@ -61,6 +62,7 @@ export function WallSimulatorPage() {
 }
 
 function Controller() {
+  const { activeRole } = useAuth()
   const controller = useWallController()
   const wall = useWallState()
   const history = useWallLayoutPublications()
@@ -208,6 +210,7 @@ function Controller() {
             </ul>
           )}
         </Panel>
+        {can.publishToWall(activeRole) && <DisplayTokensPanel />}
       </div>
     </div>
   )

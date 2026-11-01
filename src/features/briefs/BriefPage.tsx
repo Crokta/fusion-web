@@ -5,8 +5,11 @@ import {
   ArrowLeft,
   ArrowUp,
   CheckCircle2,
+  CornerDownLeft,
   Download,
+  Eye,
   FileText,
+  Heading2,
   Plus,
   Rocket,
   Save,
@@ -15,7 +18,7 @@ import {
   UserX,
 } from 'lucide-react'
 import { useQueryClient } from '@tanstack/react-query'
-import { useEffect, useMemo, useState } from 'react'
+import { Fragment, useEffect, useMemo, useState } from 'react'
 import { describeError } from '@/api'
 import { api } from '@/api'
 import { qk, useBrief, useBriefAction, useCase, useSupportCheck } from '@/api/queries'
@@ -87,6 +90,7 @@ function BriefEditor({ brief }: { brief: Brief }) {
   const [title, setTitle] = useState(brief.title)
   const [sentences, setSentences] = useState<BriefSentence[]>(brief.sentences)
   const [opening, setOpening] = useState(false)
+  const [mode, setMode] = useState<'edit' | 'preview'>('edit')
 
   const released = brief.status === 'released'
   const correcting = brief.status === 'correcting'
@@ -110,6 +114,22 @@ function BriefEditor({ brief }: { brief: Brief }) {
 
   const update = (i: number, next: Partial<BriefSentence>) =>
     setSentences((list) => list.map((s, j) => (j === i ? { ...s, ...next } : s)))
+  // A new sentence goes under the last heading; a new section starts with one empty sentence (E34).
+  const lastSection = () => sentences[sentences.length - 1]?.section
+  const addSentence = (s: Partial<BriefSentence> = {}) =>
+    setSentences((l) => [
+      ...l,
+      { text: '', supportRefs: [], ...(lastSection() ? { section: lastSection() } : {}), ...s },
+    ])
+  const renameSection = (from: number, name: string) =>
+    setSentences((list) => {
+      const old = list[from]?.section
+      return list.map((s, j) => {
+        // The run of sentences that shares the heading at `from`.
+        const inRun = j >= from && list.slice(from, j + 1).every((x) => x.section === old)
+        return inRun ? { ...s, section: name } : s
+      })
+    })
   const move = (i: number, by: number) =>
     setSentences((list) => {
       const next = [...list]
@@ -201,42 +221,89 @@ function BriefEditor({ brief }: { brief: Brief }) {
 
       <div className="grid grid-cols-1 gap-5 xl:grid-cols-[minmax(0,1fr)_380px]">
         <Panel
-          title="Sentences"
-          icon={FileText}
+          title={mode === 'edit' ? 'Sentences' : 'Preview'}
+          icon={mode === 'edit' ? FileText : Eye}
           actions={
-            canEdit && (
-              <Button
-                variant="ghost"
-                icon={Plus}
-                onClick={() => setSentences((l) => [...l, { text: '', supportRefs: [] }])}
+            <div className="flex items-center gap-1.5">
+              <div
+                role="tablist"
+                aria-label="Edit or preview"
+                className="flex rounded-md p-0.5 ring-1 ring-tint/10"
               >
-                Add sentence
-              </Button>
-            )
+                {(['edit', 'preview'] as const).map((m) => (
+                  <button
+                    key={m}
+                    type="button"
+                    role="tab"
+                    aria-selected={mode === m}
+                    onClick={() => setMode(m)}
+                    className={cn(
+                      'rounded px-2.5 py-1 text-[11.5px] transition-colors',
+                      mode === m ? 'bg-cyan/[0.12] text-ink' : 'text-ink-muted hover:text-ink',
+                    )}
+                  >
+                    {m === 'edit' ? (canEdit ? 'Edit' : 'Sentences') : 'Preview'}
+                  </button>
+                ))}
+              </div>
+              {canEdit && mode === 'edit' && (
+                <>
+                  <Button
+                    variant="ghost"
+                    icon={Heading2}
+                    onClick={() => addSentence({ section: 'New section' })}
+                  >
+                    Add section
+                  </Button>
+                  <Button variant="ghost" icon={Plus} onClick={() => addSentence()}>
+                    Add sentence
+                  </Button>
+                </>
+              )}
+            </div>
           }
           bodyClassName="p-0"
         >
-          {sentences.length === 0 ? (
+          {mode === 'preview' ? (
+            <BriefPreview
+              title={title}
+              caseRef={theCase.data?.ref}
+              version={brief.currentVersion}
+              released={released}
+              sentences={sentences}
+              citable={check.data?.citable ?? []}
+              dirty={dirty}
+              briefId={brief.id}
+            />
+          ) : sentences.length === 0 ? (
             <EmptyState icon={FileText} title="No sentences" />
           ) : (
             <ol className="divide-y divide-line-soft">
               {sentences.map((s, i) => (
-                <SentenceRow
-                  key={i}
-                  index={i}
-                  sentence={s}
-                  last={i === sentences.length - 1}
-                  check={dirty ? undefined : check.data?.sentences[i]}
-                  citable={check.data?.citable ?? []}
-                  editable={canEdit}
-                  onChange={(next) => update(i, next)}
-                  onMove={(by) => move(i, by)}
-                  onRemove={() => setSentences((l) => l.filter((_, j) => j !== i))}
-                />
+                <Fragment key={i}>
+                  {(i === 0 || s.section !== sentences[i - 1]?.section) && (
+                    <SectionHeading
+                      name={s.section}
+                      editable={canEdit}
+                      onRename={(name) => renameSection(i, name)}
+                    />
+                  )}
+                  <SentenceRow
+                    index={i}
+                    sentence={s}
+                    last={i === sentences.length - 1}
+                    check={dirty ? undefined : check.data?.sentences[i]}
+                    citable={check.data?.citable ?? []}
+                    editable={canEdit}
+                    onChange={(next) => update(i, next)}
+                    onMove={(by) => move(i, by)}
+                    onRemove={() => setSentences((l) => l.filter((_, j) => j !== i))}
+                  />
+                </Fragment>
               ))}
             </ol>
           )}
-          {canEdit && (
+          {canEdit && mode === 'edit' && (
             <div className="flex items-center justify-end gap-2 border-t border-line-soft px-4 py-3">
               {dirty && <span className="mr-auto text-[11.5px] text-amber">Unsaved changes</span>}
               <Button
@@ -333,7 +400,17 @@ function BriefEditor({ brief }: { brief: Brief }) {
                     <span className="w-16 shrink-0 font-mono text-[11px] font-semibold text-cyan">
                       {c.label}
                     </span>
-                    <span className="min-w-0 text-ink-2">{c.text}</span>
+                    <span className="min-w-0 flex-1 text-ink-2">{c.text}</span>
+                    {canEdit && (
+                      <IconButton
+                        icon={CornerDownLeft}
+                        label={`Add ${c.label} as a sentence that cites it`}
+                        onClick={() => {
+                          addSentence({ text: c.text, supportRefs: [c.ref] })
+                          setMode('edit')
+                        }}
+                      />
+                    )}
                   </li>
                 ))}
               </ul>
@@ -566,5 +643,156 @@ function ReleasePanel({
         </>
       )}
     </Panel>
+  )
+}
+
+/**
+ * A section's heading (E34). It names every sentence in the run below it until the next heading;
+ * renaming it renames the run, and an empty name leaves the sentences without a heading.
+ */
+function SectionHeading({
+  name,
+  editable,
+  onRename,
+}: {
+  name?: string
+  editable: boolean
+  onRename: (name: string) => void
+}) {
+  if (!editable && !name) return null
+  return (
+    <li className="bg-tint/[0.02] px-4 py-2">
+      {editable ? (
+        <input
+          value={name ?? ''}
+          onChange={(e) => onRename(e.target.value)}
+          maxLength={120}
+          aria-label="Section heading"
+          placeholder="No heading: name this section"
+          className="w-full rounded border border-transparent bg-transparent px-1 py-0.5 text-[12px] font-semibold tracking-wide text-ink-2 uppercase placeholder:font-normal placeholder:normal-case placeholder:text-ink-faint hover:border-line focus:border-cyan/50 focus:outline-none"
+        />
+      ) : (
+        <h3 className="text-[12px] font-semibold tracking-wide text-ink-2 uppercase">{name}</h3>
+      )}
+    </li>
+  )
+}
+
+/**
+ * The brief as a reader will get it, before release (E34): headings, each sentence with the
+ * labels of what it cites, then only the sources cited. The PDF itself can be shown here too.
+ */
+function BriefPreview({
+  title,
+  caseRef,
+  version,
+  released,
+  sentences,
+  citable,
+  dirty,
+  briefId,
+}: {
+  title: string
+  caseRef?: string
+  version: number
+  released: boolean
+  sentences: BriefSentence[]
+  citable: Citable[]
+  dirty: boolean
+  briefId: string
+}) {
+  const toast = useToast()
+  const [pdf, setPdf] = useState<string | null>(null)
+  const [loading, setLoading] = useState(false)
+  useEffect(() => () => void (pdf && URL.revokeObjectURL(pdf)), [pdf])
+
+  const labelOf = new Map(citable.map((c) => [c.ref, c.label]))
+  const cited = new Set(sentences.flatMap((s) => s.supportRefs))
+  const sources = citable.filter((c) => cited.has(c.ref))
+  const written = sentences.filter((s) => s.text.trim())
+
+  const showPdf = async () => {
+    setLoading(true)
+    try {
+      setPdf(URL.createObjectURL(await api.briefPdf(briefId, released ? version : undefined)))
+    } catch (e) {
+      toast({ title: 'No PDF', detail: describeError(e), tone: 'error' })
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <div className="px-6 py-5">
+      {!released && (
+        <p className="mb-4 rounded-md border border-amber/30 bg-amber/[0.06] px-3 py-2 text-[11.5px] text-amber">
+          Draft: not for distribution.{' '}
+          {dirty
+            ? 'This preview includes your unsaved changes; the PDF shows the last saved version.'
+            : ''}
+        </p>
+      )}
+      <article className="font-serif text-ink">
+        <p className="eyebrow text-cyan/80">Homeland Fusion Centre · Brief</p>
+        <h2 className="mt-1 text-[22px] leading-tight font-semibold">
+          {title || 'Untitled brief'}
+        </h2>
+        <p className="mt-1 text-[11.5px] text-ink-faint">
+          {caseRef ?? 'Case'} · Version {version}
+        </p>
+        {written.length === 0 ? (
+          <p className="mt-5 text-[13px] text-ink-muted">Nothing written yet.</p>
+        ) : (
+          written.map((s, i) => (
+            <Fragment key={i}>
+              {s.section && s.section !== written[i - 1]?.section && (
+                <h3 className="mt-5 mb-2 font-sans text-[13px] font-semibold text-ink">
+                  {s.section}
+                </h3>
+              )}
+              <p className="mb-2.5 text-[14px] leading-relaxed">
+                {s.text}
+                {/* As the PDF prints it: only the labels of references that resolve. */}
+                {s.supportRefs.some((r) => labelOf.has(r)) && (
+                  <sup className="ml-1 font-sans text-[10px] font-bold text-cyan">
+                    [{s.supportRefs.flatMap((r) => labelOf.get(r) ?? []).join(', ')}]
+                  </sup>
+                )}
+              </p>
+            </Fragment>
+          ))
+        )}
+        {sources.length > 0 && (
+          <>
+            <h3 className="mt-6 border-t border-line pt-3 font-sans text-[11px] font-semibold tracking-[0.12em] text-ink-muted uppercase">
+              Sources
+            </h3>
+            <dl className="mt-2 space-y-1 font-sans text-[12px]">
+              {sources.map((c) => (
+                <div key={c.ref} className="flex gap-3">
+                  <dt className="w-16 shrink-0 font-mono text-[11px] font-semibold text-cyan">
+                    {c.label}
+                  </dt>
+                  <dd className="text-ink-2">{c.text}</dd>
+                </div>
+              ))}
+            </dl>
+          </>
+        )}
+      </article>
+      <div className="mt-6 border-t border-line-soft pt-4">
+        {pdf ? (
+          <iframe
+            src={pdf}
+            title={released ? `Released PDF, version ${version}` : 'Draft PDF preview'}
+            className="h-[70vh] w-full rounded-md border border-line bg-white"
+          />
+        ) : (
+          <Button variant="secondary" icon={FileText} loading={loading} onClick={showPdf}>
+            {released ? `Show the released PDF (v${version}) here` : 'Show the draft PDF here'}
+          </Button>
+        )}
+      </div>
+    </div>
   )
 }

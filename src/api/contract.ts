@@ -4,6 +4,8 @@ import type {
   GeoLocation,
   LocationSubject,
   MapArea,
+  AreaLevel,
+  MapBoundaries,
   MapFeature,
   MapLayer,
   MapQuery,
@@ -69,6 +71,11 @@ import type {
   TriageStatus,
   WallContentKey,
   WallControllerStatus,
+  WallRendererToken,
+  WallZoneContent,
+  WallZones,
+  ReviewHistoryEntry,
+  BriefStatus,
   WallLayoutPublication,
   WallPreset,
   WallPresetKey,
@@ -77,6 +84,25 @@ import type {
   WatchFloorSummary,
   UploadProgress,
   WorkingCopy,
+  AcceptQuestionInput,
+  BriefFeedback,
+  FeedbackRating,
+  Question,
+  QuestionInput,
+  QuestionStatus,
+  Requirement,
+  RequirementStatus,
+  // E39
+  Disposal,
+  DisposalCertificate,
+  DisposalExecution,
+  DisposalStatus,
+  IntegrityRun,
+  IntegrityRunDetail,
+  RetentionClass,
+  RetentionItem,
+  RetentionListView,
+  RetentionSchedule,
 } from './types'
 
 /**
@@ -174,7 +200,8 @@ export interface FusionApi {
   caseMatrix(caseId: string): Promise<CaseMatrix>
 
   // Briefs (reporting). Drafting starts from a case's approved findings.
-  briefs(params?: { caseId?: string }): Promise<Page<Brief>>
+  /** `status` narrows to those (E34: drafts and corrections waiting to be released). */
+  briefs(params?: { caseId?: string; status?: BriefStatus[] }): Promise<Page<Brief>>
   brief(id: string): Promise<Brief>
   createBrief(caseId: string): Promise<Brief>
   redraftBrief(
@@ -284,5 +311,52 @@ export interface FusionApi {
   removeLocation(id: string, version: number): Promise<GeoLocation>
   mapLayers(): Promise<MapLayer[]>
   mapFeatures(query: MapQuery): Promise<{ features: MapFeature[]; truncated: boolean }>
-  mapAreas(query: Omit<MapQuery, 'bbox'>): Promise<MapArea[]>
+  mapAreas(query: Omit<MapQuery, 'bbox'>, level?: AreaLevel): Promise<MapArea[]>
+  /** State or LGA polygons for the choropleth (ADR 0022). */
+  mapBoundaries(level: AreaLevel): Promise<MapBoundaries>
+
+  // Leadership questions, requirements and feedback (intake, E37, ADR 0020). Asking is
+  // question.ask (leadership); accepting, answering and declining are requirement.manage; feedback
+  // on a released brief is product.feedback, and reading it product.read.
+  questions(params?: { status?: QuestionStatus; briefId?: string }): Promise<Page<Question>>
+  askQuestion(input: QuestionInput): Promise<Question>
+  acceptQuestion(id: string, input: AcceptQuestionInput, etag: string): Promise<Question>
+  answerQuestion(id: string, answer: string, briefIds: string[], etag: string): Promise<Question>
+  declineQuestion(id: string, reason: string, etag: string): Promise<Question>
+  requirements(params?: { status?: RequirementStatus }): Promise<Page<Requirement>>
+  createRequirement(input: {
+    title: string
+    detail?: string
+    expiresAt: string
+  }): Promise<Requirement>
+  briefFeedback(params?: { productId?: string }): Promise<BriefFeedback[]>
+  giveFeedback(productId: string, rating: FeedbackRating, comment?: string): Promise<BriefFeedback>
+
+  // E34 (ADR 0019): a case's earlier review decisions, and the wall renderer.
+  /** Every CASE_REVIEW gate the case has had, newest first, with each decision's comment. */
+  reviewHistory(caseId: string): Promise<ReviewHistoryEntry[]>
+  wallRendererTokens(): Promise<WallRendererToken[]>
+  /** The secret comes back here only; reporting keeps its hash (wall.operate). */
+  issueWallRendererToken(label: string): Promise<{ token: WallRendererToken; secret: string }>
+  revokeWallRendererToken(id: string): Promise<WallRendererToken>
+  /** The published layout's zones. With `token`, read as a display (X-Wall-Token), not as the user. */
+  wallZones(token?: string): Promise<WallZones>
+  wallZoneContent(zoneId: string, token?: string): Promise<WallZoneContent>
+
+  // Retention, legal holds, disposal with certificate and integrity runs (evidence, E39, ADR 0021).
+  // All evidence.custody. Proposing a disposal also opens governance's gate for the caller, so
+  // their role must be allowed to request approvals there (approval.request).
+  retentionClasses(): Promise<RetentionClass[]>
+  retention(view: RetentionListView): Promise<Page<RetentionItem>>
+  placeLegalHold(evidenceId: string, reason: string, etag: string): Promise<RetentionSchedule>
+  releaseLegalHold(evidenceId: string, reason: string, etag: string): Promise<RetentionSchedule>
+  disposals(params?: { status?: DisposalStatus }): Promise<Page<Disposal>>
+  requestDisposal(evidenceIds: string[], reason: string): Promise<Disposal>
+  executeDisposal(id: string, etag: string): Promise<DisposalExecution>
+  disposalCertificates(): Promise<Page<DisposalCertificate>>
+  disposalCertificate(id: string): Promise<DisposalCertificate>
+  integrityRuns(): Promise<Page<IntegrityRun>>
+  integrityRun(id: string): Promise<IntegrityRunDetail>
+  /** A run now; rate 1 re-hashes every active original (after a restore). */
+  startIntegrityRun(rate?: number): Promise<IntegrityRunDetail>
 }

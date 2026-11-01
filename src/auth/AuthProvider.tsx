@@ -400,6 +400,14 @@ export const can = {
   ackAlert: (r: Role) => r === 'analyst' || r === 'supervisor' || r === 'centre_lead',
   /** case.assign in permissions.yaml: keeping mission templates and choosing a case's mission (E29). */
   manageMissions: (r: Role) => r === 'supervisor' || r === 'centre_lead',
+  /** question.ask in permissions.yaml: putting a question to the centre (E37, ADR 0020). */
+  askQuestion: (r: Role) => r === 'leadership',
+  /** question.read in permissions.yaml: leadership's questions and their answers. */
+  readQuestions: (r: Role) => r === 'supervisor' || r === 'centre_lead' || r === 'leadership',
+  /** requirement.manage in permissions.yaml: requirements, and accepting, answering or declining questions. */
+  manageRequirements: (r: Role) => r === 'supervisor' || r === 'centre_lead',
+  /** product.feedback in permissions.yaml: feedback on a released brief. */
+  giveFeedback: (r: Role) => r === 'leadership',
   /** outcomes.read in permissions.yaml: the outcome dashboard (E38). */
   readOutcomes: (r: Role) => r === 'supervisor' || r === 'centre_lead' || r === 'leadership',
   /** case.close in permissions.yaml: closing a released case, after which lessons are recorded. */
@@ -408,6 +416,10 @@ export const can = {
   recordLesson: (r: Role) => r === 'analyst' || r === 'supervisor',
   /** case.assign in permissions.yaml: marking a lesson applied to a mission template (E38). */
   applyLesson: (r: Role) => r === 'supervisor' || r === 'centre_lead',
+  /** case.assign in permissions.yaml: the supervisor desk, the team's workload (E34). */
+  viewDesk: (r: Role) => r === 'supervisor' || r === 'centre_lead',
+  /** case.review in permissions.yaml: reporting's review queue and a case's earlier decisions (E34). */
+  readReviewQueue: (r: Role) => r === 'reviewer' || r === 'supervisor' || r === 'centre_lead',
   /** case.read in permissions.yaml: the mission templates themselves. */
   readMissions: (r: Role) =>
     r === 'analyst' ||
@@ -419,6 +431,13 @@ export const can = {
   manageRoster: (r: Role) => r === 'supervisor' || r === 'centre_lead',
   changePolicy: (r: Role) => r === 'admin' || r === 'centre_lead',
   viewAudit: (r: Role) => r === 'admin' || r === 'centre_lead' || r === 'supervisor',
+  /** evidence.custody in permissions.yaml: retention, legal holds, disposal and integrity runs (E39). */
+  custodyEvidence: (r: Role) => r === 'evidence_officer' || r === 'centre_lead',
+  /**
+   * evidence.custody and approval.request together: proposing a disposal opens governance's gate
+   * for the person asking, and governance lets only these roles open one (ADR 0021).
+   */
+  proposeDisposal: (r: Role) => r === 'centre_lead',
   /** cctv.request in permissions.yaml: drafting and submitting CCTV requests (E31). */
   requestCctv: (r: Role) => r === 'analyst' || r === 'supervisor',
   /** search.names in permissions.yaml: asking for name searches, and a public figure's results (E30). */

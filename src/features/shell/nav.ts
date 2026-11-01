@@ -2,6 +2,7 @@ import {
   Archive,
   BarChart3,
   CalendarClock,
+  Gauge,
   ClipboardCheck,
   FileText,
   FolderKanban,
@@ -21,8 +22,11 @@ import {
   Users,
   Waypoints,
   type LucideIcon,
+  Landmark,
+  MessageSquareText,
   CircleDollarSign,
   Cctv,
+  Hourglass,
 } from 'lucide-react'
 
 export interface NavItem {
@@ -48,6 +52,13 @@ export const NAV: NavGroup[] = [
       { to: '/triage', label: 'Triage', icon: Inbox },
       { to: '/cases', label: 'Cases', icon: FolderKanban, hint: '2' },
       { to: '/review', label: 'Review', icon: ClipboardCheck, hint: '3' },
+      {
+        to: '/desk',
+        label: 'Supervisor desk',
+        icon: Gauge,
+        description:
+          'The team’s workload by analyst and state, cases at risk, alerts and who is on duty, and decisions waiting.',
+      },
       {
         to: '/products',
         label: 'Products',
@@ -162,9 +173,35 @@ export const NAV: NavGroup[] = [
     ],
   },
   {
+    label: 'Leadership',
+    items: [
+      {
+        to: '/leadership',
+        label: 'Leadership portal',
+        icon: Landmark,
+        description:
+          'Released briefs and feedback on them, questions to the centre and their answers, and the outcome headline.',
+      },
+      {
+        to: '/questions',
+        label: 'Questions',
+        icon: MessageSquareText,
+        description:
+          'Leadership’s questions: accept one as a requirement, answer it from released briefs, or decline it.',
+      },
+    ],
+  },
+  {
     label: 'Governance',
     items: [
       { to: '/approvals', label: 'Approvals', icon: Stamp, hint: '7' },
+      {
+        to: '/retention',
+        label: 'Retention',
+        icon: Hourglass,
+        description:
+          'Originals due for disposal, legal holds, disposals with their certificates, and integrity checks.',
+      },
       { to: '/admin', label: 'Admin', icon: Settings2, hint: '8' },
     ],
   },

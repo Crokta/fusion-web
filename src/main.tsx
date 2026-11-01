@@ -9,6 +9,7 @@ import { ToastProvider } from '@/components/Toaster'
 import { ShellProvider } from '@/features/shell/ShellContext'
 import { LiveProvider } from '@/realtime/LiveProvider'
 import { routeTree } from './routeTree.gen'
+import { WallDisplayApp } from '@/features/wall/WallDisplay'
 import './index.css'
 
 const queryClient = new QueryClient({
@@ -40,20 +41,32 @@ declare module '@tanstack/react-router' {
   }
 }
 
+// A wall display (E34, ADR 0019) signs in with no one's account: it holds a renderer token, so
+// it runs outside the sign-in gate, the shell and the live hub.
+const isWallDisplay = window.location.pathname === '/display'
+
 createRoot(document.getElementById('root')!).render(
-  <StrictMode>
-    <QueryClientProvider client={queryClient}>
-      <ToastProvider>
-        <AuthProvider>
-          <AuthGate>
-            <LiveProvider>
-              <ShellProvider>
-                <RouterProvider router={router} />
-              </ShellProvider>
-            </LiveProvider>
-          </AuthGate>
-        </AuthProvider>
-      </ToastProvider>
-    </QueryClientProvider>
-  </StrictMode>,
+  isWallDisplay ? (
+    <StrictMode>
+      <QueryClientProvider client={queryClient}>
+        <WallDisplayApp />
+      </QueryClientProvider>
+    </StrictMode>
+  ) : (
+    <StrictMode>
+      <QueryClientProvider client={queryClient}>
+        <ToastProvider>
+          <AuthProvider>
+            <AuthGate>
+              <LiveProvider>
+                <ShellProvider>
+                  <RouterProvider router={router} />
+                </ShellProvider>
+              </LiveProvider>
+            </AuthGate>
+          </AuthProvider>
+        </ToastProvider>
+      </QueryClientProvider>
+    </StrictMode>
+  ),
 )

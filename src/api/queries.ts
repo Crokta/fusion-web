@@ -1,10 +1,17 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from './index'
 import type {
+  RetentionListView,
+  AcceptQuestionInput,
+  FeedbackRating,
+  QuestionInput,
+  QuestionStatus,
+  RequirementStatus,
   Alert,
   AttachLocationInput,
   LocationSubject,
   MapQuery,
+  AreaLevel,
   PlaceKind,
   NameSearchInput,
   CctvRequestInput,
@@ -833,7 +840,9 @@ export const geoKeys = {
     ['geo', 'locations', subjectType, subjectId] as const,
   layers: ['geo', 'layers'] as const,
   features: (q: MapQuery) => ['geo', 'features', q] as const,
-  areas: (q: Omit<MapQuery, 'bbox'>) => ['geo', 'areas', q] as const,
+  areas: (q: Omit<MapQuery, 'bbox'>, level: AreaLevel = 'state') =>
+    ['geo', 'areas', level, q] as const,
+  boundaries: (level: AreaLevel) => ['geo', 'boundaries', level] as const,
 }
 
 export const usePlaces = (q: string, kind?: PlaceKind) =>
@@ -873,8 +882,21 @@ export const useMapFeatures = (q: MapQuery, enabled = true) =>
     placeholderData: (previous) => previous,
   })
 
-export const useMapAreas = (q: Omit<MapQuery, 'bbox'>, enabled = true) =>
-  useQuery({ queryKey: geoKeys.areas(q), queryFn: () => api.mapAreas(q), enabled })
+export const useMapAreas = (
+  q: Omit<MapQuery, 'bbox'>,
+  enabled = true,
+  level: AreaLevel = 'state',
+) => useQuery({ queryKey: geoKeys.areas(q, level), queryFn: () => api.mapAreas(q, level), enabled })
+
+/** Public boundaries that change only with a new edition: fetched once a session. */
+export const useMapBoundaries = (level: AreaLevel, enabled = true) =>
+  useQuery({
+    queryKey: geoKeys.boundaries(level),
+    queryFn: () => api.mapBoundaries(level),
+    enabled,
+    staleTime: Infinity,
+    retry: false,
+  })
 
 /** Placing, confirming and removing change the subject's list and every map view. */
 function useGeoMutation<V>(fn: (v: V) => Promise<unknown>) {
@@ -893,3 +915,195 @@ export const useConfirmLocation = () =>
 
 export const useRemoveLocation = () =>
   useGeoMutation((l: { id: string; version: number }) => api.removeLocation(l.id, l.version))
+
+// ---------------------------------------------------------------- E37: leadership questions and feedback (ADR 0020)
+
+export const leadershipKeys = {
+  questions: (p?: { status?: QuestionStatus; briefId?: string }) =>
+    ['questions', p?.status ?? 'all', p?.briefId ?? 'any'] as const,
+  requirements: (status?: RequirementStatus) => ['requirements', status ?? 'all'] as const,
+  feedback: (productId?: string) => ['feedback', productId ?? 'all'] as const,
+}
+
+export const useQuestions = (p?: { status?: QuestionStatus; briefId?: string }, enabled = true) =>
+  useQuery({ queryKey: leadershipKeys.questions(p), queryFn: () => api.questions(p), enabled })
+
+export const useRequirements = (status?: RequirementStatus, enabled = true) =>
+  useQuery({
+    queryKey: leadershipKeys.requirements(status),
+    queryFn: () => api.requirements({ status }),
+    enabled,
+  })
+
+export const useBriefFeedback = (productId?: string, enabled = true) =>
+  useQuery({
+    queryKey: leadershipKeys.feedback(productId),
+    queryFn: () => api.briefFeedback({ productId }),
+    enabled,
+  })
+
+export type QuestionAction =
+  | { kind: 'ask'; input: QuestionInput }
+  | { kind: 'accept'; id: string; input: AcceptQuestionInput; etag: string }
+  | { kind: 'answer'; id: string; answer: string; briefIds: string[]; etag: string }
+  | { kind: 'decline'; id: string; reason: string; etag: string }
+
+/** Every step of a question; accepting one may create a requirement, so both lists refresh. */
+export function useQuestionAction() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (a: QuestionAction) =>
+      a.kind === 'ask'
+        ? api.askQuestion(a.input)
+        : a.kind === 'accept'
+          ? api.acceptQuestion(a.id, a.input, a.etag)
+          : a.kind === 'answer'
+            ? api.answerQuestion(a.id, a.answer, a.briefIds, a.etag)
+            : api.declineQuestion(a.id, a.reason, a.etag),
+    onSettled: () => {
+      qc.invalidateQueries({ queryKey: ['questions'] })
+      qc.invalidateQueries({ queryKey: ['requirements'] })
+    },
+  })
+}
+
+export function useGiveFeedback() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (f: { productId: string; rating: FeedbackRating; comment?: string }) =>
+      api.giveFeedback(f.productId, f.rating, f.comment),
+    onSettled: () => qc.invalidateQueries({ queryKey: ['feedback'] }),
+  })
+}
+
+// ---------------------------------------------------------------------------------------
+// E34: review history, briefs waiting for release, and the wall renderer (ADR 0019)
+// ---------------------------------------------------------------------------------------
+
+export const useReviewHistory = (caseId: string | undefined) =>
+  useQuery({
+    queryKey: ['reviews', 'history', caseId ?? ''] as const,
+    queryFn: () => api.reviewHistory(caseId!),
+    enabled: !!caseId,
+  })
+
+/** Drafts and corrections: what a reviewer may be asked to release. */
+export const useBriefsAwaitingRelease = (enabled = true) =>
+  useQuery({
+    queryKey: ['briefs', 'awaiting-release'] as const,
+    queryFn: () => api.briefs({ status: ['draft', 'correcting'] }),
+    enabled,
+  })
+
+export const useRendererTokens = (enabled = true) =>
+  useQuery({
+    queryKey: ['wall', 'renderer-tokens'] as const,
+    queryFn: api.wallRendererTokens,
+    enabled,
+  })
+
+export function useRendererTokenAction() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (
+      a: { kind: 'issue'; label: string } | { kind: 'revoke'; id: string },
+    ): Promise<{ secret?: string }> =>
+      a.kind === 'issue'
+        ? api.issueWallRendererToken(a.label)
+        : api.revokeWallRendererToken(a.id).then(() => ({})),
+    onSettled: () => qc.invalidateQueries({ queryKey: ['wall', 'renderer-tokens'] }),
+  })
+}
+
+/** A display polls: the hub needs an account, and a display has only its token (ADR 0019). */
+export const useWallZones = (token?: string) =>
+  useQuery({
+    queryKey: ['wall', 'zones', token ?? 'session'] as const,
+    queryFn: () => api.wallZones(token),
+    refetchInterval: 10_000,
+  })
+
+export const useWallZoneContent = (zoneId: string, token?: string) =>
+  useQuery({
+    queryKey: ['wall', 'zones', token ?? 'session', zoneId] as const,
+    queryFn: () => api.wallZoneContent(zoneId, token),
+    refetchInterval: 15_000,
+  })
+
+// ---------------------------------------------------------------- retention (E39, ADR 0021)
+// Keys live under ['retention'], so one invalidation refreshes lists, disposals and certificates.
+
+export const useRetentionClasses = () =>
+  useQuery({
+    queryKey: ['retention', 'classes'] as const,
+    queryFn: () => api.retentionClasses(),
+    staleTime: 300_000,
+  })
+
+export const useRetention = (view: RetentionListView) =>
+  useQuery({ queryKey: ['retention', 'list', view] as const, queryFn: () => api.retention(view) })
+
+export const useDisposals = () =>
+  useQuery({ queryKey: ['retention', 'disposals'] as const, queryFn: () => api.disposals() })
+
+export const useDisposalCertificates = () =>
+  useQuery({
+    queryKey: ['retention', 'certificates'] as const,
+    queryFn: () => api.disposalCertificates(),
+  })
+
+export const useDisposalCertificate = (id: string | undefined) =>
+  useQuery({
+    queryKey: ['retention', 'certificate', id ?? ''] as const,
+    queryFn: () => api.disposalCertificate(id!),
+    enabled: !!id,
+  })
+
+export const useIntegrityRuns = () =>
+  useQuery({ queryKey: ['retention', 'integrity'] as const, queryFn: () => api.integrityRuns() })
+
+export const useIntegrityRun = (id: string | undefined) =>
+  useQuery({
+    queryKey: ['retention', 'integrity', id ?? ''] as const,
+    queryFn: () => api.integrityRun(id!),
+    enabled: !!id,
+  })
+
+export function useLegalHold() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (v: { evidenceId: string; place: boolean; reason: string; etag: string }) =>
+      v.place
+        ? api.placeLegalHold(v.evidenceId, v.reason, v.etag)
+        : api.releaseLegalHold(v.evidenceId, v.reason, v.etag),
+    onSettled: () => qc.invalidateQueries({ queryKey: ['retention'] }),
+  })
+}
+
+export function useRequestDisposal() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (v: { evidenceIds: string[]; reason: string }) =>
+      api.requestDisposal(v.evidenceIds, v.reason),
+    onSettled: () => {
+      qc.invalidateQueries({ queryKey: ['retention'] })
+      qc.invalidateQueries({ queryKey: ['approvals'] })
+    },
+  })
+}
+
+export function useExecuteDisposal() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (v: { id: string; etag: string }) => api.executeDisposal(v.id, v.etag),
+    onSettled: () => qc.invalidateQueries({ queryKey: ['retention'] }),
+  })
+}
+
+export function useStartIntegrityRun() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (rate?: number) => api.startIntegrityRun(rate),
+    onSettled: () => qc.invalidateQueries({ queryKey: ['retention', 'integrity'] }),
+  })
+}

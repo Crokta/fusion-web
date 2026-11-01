@@ -334,6 +334,9 @@ function Snapshot({ report: r }: { report: NameReportData }) {
       <Buckets title="By day" buckets={r.breakdowns.day ?? []} />
       <Buckets title="By outlet" buckets={r.breakdowns.source ?? []} />
       <Buckets title="By record type" buckets={r.breakdowns.type ?? []} />
+      {/* Where the stories and cases are placed (ADR 0022); absent until something is located. */}
+      <Buckets title="By state" buckets={r.breakdowns.location ?? []} />
+      <Buckets title="By LGA" buckets={r.breakdowns.location_lga ?? []} />
       <p className="text-[11px] text-ink-faint">
         Taken by {r.createdBy} {relative(r.createdAt)}
         {r.retentionClass === 'short' && ' · deleted when the approval lapses'}

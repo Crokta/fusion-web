@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest'
 import {
+  fromAcceptQuestionInput,
+  toBriefFeedback,
+  toQuestion,
+  toRequirement,
+  type FeedbackDto,
+  type QuestionDto,
+  type RequirementDto,
   toNameCluster,
   toNameMention,
   toNameReportData,
@@ -24,6 +31,7 @@ import {
   toAlert,
   toDelivery,
   toApproval,
+  toWatchFloor,
   toAuditEvent,
   toCaseDetail,
   toCaseSummary,
@@ -161,6 +169,12 @@ describe('approvals', () => {
       },
       { role: 'evidence_officer' },
     ])
+  })
+
+  it('keeps the subject, so a PI_SEARCH approval can link to its name search', () => {
+    const a = toApproval(gate, name)
+    expect(a.subjectType).toBe('name_search')
+    expect(a.subjectId).toBe('ns-1')
   })
 
   it("speaks the web's word for a rejection", () => {
@@ -1144,5 +1158,126 @@ describe('name searches (E30)', () => {
     })
     expect(r.lastSeen).toBeUndefined()
     expect(Object.keys(r.breakdowns)).toEqual(['day', 'location'])
+  })
+})
+
+describe('leadership questions and feedback (E37, ADR 0020)', () => {
+  const who = (id: string | null | undefined) =>
+    id === 'u-leader' ? 'Ngozi Okafor' : id === 'u-lead' ? 'Tunde Bakare' : '—'
+  const question: QuestionDto = {
+    id: 'q-1',
+    text: 'Will the strike spread to Kaduna?',
+    context: null,
+    neededBy: '2026-11-04T23:59:59Z',
+    status: 'answered',
+    askedBy: 'u-leader',
+    askedAt: '2026-11-01T08:00:00Z',
+    requirement: {
+      id: 'r-1',
+      title: 'Strike in Kano',
+      status: 'active',
+      expiresAt: '2026-12-01T23:59:59Z',
+    },
+    acceptedBy: 'u-lead',
+    acceptedAt: '2026-11-01T09:00:00Z',
+    answer: 'Unlikely this week.',
+    briefIds: ['p-1'],
+    answeredBy: 'u-lead',
+    answeredAt: '2026-11-01T10:00:00Z',
+    declinedReason: null,
+    declinedBy: null,
+    declinedAt: null,
+    version: 2,
+  }
+
+  it('maps a question with its people, requirement and ETag', () => {
+    const q = toQuestion(question, who)
+    expect(q.askedBy).toEqual({ id: 'u-leader', name: 'Ngozi Okafor' })
+    expect(q.answeredBy?.name).toBe('Tunde Bakare')
+    expect(q.declinedBy).toBeNull()
+    expect(q.requirement?.status).toBe('active')
+    expect(q.briefIds).toEqual(['p-1'])
+    expect(q.etag).toBe('"v2"')
+  })
+
+  it('never shows an unknown question as settled or a requirement as live', () => {
+    const q = toQuestion(
+      {
+        ...question,
+        status: 'withdrawn',
+        briefIds: null,
+        requirement: { ...question.requirement!, status: 'paused' },
+      },
+      who,
+    )
+    expect(q.status).toBe('asked')
+    expect(q.briefIds).toEqual([])
+    expect(q.requirement?.status).toBe('expired')
+
+    const r: RequirementDto = {
+      id: 'r-1',
+      title: 'Strike in Kano',
+      detail: null,
+      status: 'archived',
+      expiresAt: '2026-12-01T23:59:59Z',
+      createdBy: 'u-lead',
+      createdAt: '2026-11-01T09:00:00Z',
+      questionId: 'q-1',
+      closedReason: null,
+      closedAt: null,
+      version: 0,
+    }
+    expect(toRequirement(r, who)).toMatchObject({
+      status: 'expired',
+      createdBy: { name: 'Tunde Bakare' },
+      questionId: 'q-1',
+      etag: '"v0"',
+    })
+  })
+
+  it('maps feedback and keeps an unknown rating in the middle', () => {
+    const f: FeedbackDto = {
+      id: 'f-1',
+      productId: 'p-1',
+      productVersion: 2,
+      rating: 'not_useful',
+      comment: 'Out of date',
+      givenBy: 'u-leader',
+      givenAt: '2026-11-01T11:00:00Z',
+      changedAt: null,
+    }
+    expect(toBriefFeedback(f, who)).toMatchObject({
+      rating: 'not_useful',
+      givenBy: { name: 'Ngozi Okafor' },
+    })
+    expect(toBriefFeedback({ ...f, rating: 'superb' }, who).rating).toBe('partly_useful')
+  })
+
+  it('accepts under an existing requirement or describes a new one, never both', () => {
+    expect(fromAcceptQuestionInput({ requirementId: 'r-1' })).toEqual({ requirementId: 'r-1' })
+    expect(
+      fromAcceptQuestionInput({
+        title: '  ',
+        detail: ' Scope ',
+        expiresAt: '2026-12-01T23:59:59Z',
+      }),
+    ).toEqual({ title: undefined, detail: 'Scope', expiresAt: '2026-12-01T23:59:59Z' })
+  })
+})
+
+describe('watch floor', () => {
+  it('keeps the map points the gateway composed, and none when it sent none', () => {
+    const event = {
+      id: 'l1',
+      title: 'CASE-2026-0001',
+      place: 'Maiduguri',
+      lat: 11.84,
+      lon: 13.15,
+      priority: 'high' as const,
+      precision: 'confirmed' as const,
+      caseRef: 'CASE-2026-0001',
+    }
+    expect(toWatchFloor({ kpis: [], sources: [], events: [event] }).events).toEqual([event])
+    expect(toWatchFloor({ kpis: [], sources: [] }).events).toEqual([])
   })
 })

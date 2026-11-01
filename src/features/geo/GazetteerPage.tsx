@@ -128,7 +128,9 @@ export function GazetteerPage() {
                 <div key={d.key} className="space-y-1 text-xs text-ink-2">
                   <p>{d.attribution}.</p>
                   <p className="text-ink-muted">
-                    {d.source}. {d.placeCount.toLocaleString('en-GB')} places, loaded{' '}
+                    {d.source}. {d.placeCount.toLocaleString('en-GB')}{' '}
+                    {/* The boundary edition (ADR 0022) counts states and LGAs, not places. */}
+                    {d.key.startsWith('cod-ab-') ? 'areas' : 'places'}, loaded{' '}
                     {new Date(d.loadedAt).toLocaleDateString('en-GB')}.
                   </p>
                 </div>

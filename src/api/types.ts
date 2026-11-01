@@ -380,6 +380,8 @@ export type BriefStatus = 'draft' | 'released' | 'correcting'
 export interface BriefSentence {
   text: string
   supportRefs: string[]
+  /** The heading it sits under (E34); consecutive sentences with one heading are one section. */
+  section?: string
 }
 
 export interface BriefVersion {
@@ -615,6 +617,8 @@ export interface ReviewItem {
   priority: Priority
   marking: Marking
   revision: number
+  /** On a resubmission: how the submission before this one was decided (E34). */
+  previousOutcome?: 'approved' | 'returned'
 }
 
 export type ReviewDecision = 'approve' | 'return'
@@ -647,6 +651,9 @@ export interface Approval {
   caseRef?: string
   /** Scope limits the gate enforces, e.g. "≤ 14 days" or "24 h window". */
   scope: string
+  /** What the approval is for, as governance names it (a PI_SEARCH's is a `name_search` id). */
+  subjectType?: string
+  subjectId?: string
 }
 
 export interface PolicyRecord {
@@ -1346,8 +1353,9 @@ export interface MapQuery {
   precision?: LocationPrecision
 }
 
-/** Live locations in one state, by layer: the map's "by place" view. */
+/** Live locations in one state or LGA, by layer: the map's "by place" view and choropleth. */
 export interface MapArea {
+  /** A state's gazetteer id; an LGA's P-code, as it has no gazetteer entry. */
   placeId: string
   name: string
   country: string
@@ -1356,4 +1364,300 @@ export interface MapArea {
   cases: number
   stories: number
   estimated: number
+  /** The polygon's P-code (ADR 0022), which the choropleth joins on; none outside Nigeria. */
+  code?: string
+  level?: AreaLevel
+  /** An LGA's state. */
+  parent?: string
+}
+
+/** The boundary levels search has polygons for (ADR 0022). */
+export type AreaLevel = 'state' | 'lga'
+
+export interface BoundaryProperties {
+  code: string
+  name: string
+  level: 1 | 2
+  parentCode?: string | null
+  parentName?: string | null
+}
+
+/** State or LGA polygons as GeoJSON (RFC 7946), simplified for the map. */
+export interface MapBoundaries {
+  type: 'FeatureCollection'
+  features: {
+    type: 'Feature'
+    id: string
+    properties: BoundaryProperties
+    geometry: { type: 'Polygon' | 'MultiPolygon'; coordinates: unknown }
+  }[]
+}
+
+// ---------------------------------------------------------------- leadership questions and feedback (E37, ADR 0020)
+
+export type QuestionStatus = 'asked' | 'accepted' | 'answered' | 'declined'
+
+export type RequirementStatus = 'active' | 'expired' | 'closed'
+
+/** An intelligence requirement in intake: what the centre has agreed to collect on, until when. */
+export interface Requirement {
+  id: string
+  title: string
+  detail: string | null
+  status: RequirementStatus
+  expiresAt: string
+  createdBy: { id: string; name: string }
+  createdAt: string
+  /** The leadership question it was accepted from, if any. */
+  questionId: string | null
+  closedReason: string | null
+  etag: string
+}
+
+/** A question leadership put to the centre: asked, accepted as a requirement, then answered or declined. */
+export interface Question {
+  id: string
+  text: string
+  context: string | null
+  neededBy: string | null
+  status: QuestionStatus
+  askedBy: { id: string; name: string }
+  askedAt: string
+  requirement: { id: string; title: string; status: RequirementStatus; expiresAt: string } | null
+  acceptedBy: { id: string; name: string } | null
+  acceptedAt: string | null
+  answer: string | null
+  /** Released briefs the answer rests on. */
+  briefIds: string[]
+  answeredBy: { id: string; name: string } | null
+  answeredAt: string | null
+  declinedReason: string | null
+  declinedBy: { id: string; name: string } | null
+  declinedAt: string | null
+  etag: string
+}
+
+export interface QuestionInput {
+  text: string
+  context?: string
+  neededBy?: string
+}
+
+/** Accept under a live requirement, or as a new one that expires at `expiresAt`. */
+export type AcceptQuestionInput =
+  { requirementId: string } | { title?: string; detail?: string; expiresAt: string }
+
+export type FeedbackRating = 'useful' | 'partly_useful' | 'not_useful'
+
+export const FEEDBACK_LABEL: Record<FeedbackRating, string> = {
+  useful: 'Useful',
+  partly_useful: 'Partly useful',
+  not_useful: 'Not useful',
+}
+
+/** One reader's feedback on a released brief; giving it again replaces it. */
+export interface BriefFeedback {
+  id: string
+  productId: string
+  productVersion: number
+  rating: FeedbackRating
+  comment: string | null
+  givenBy: { id: string; name: string }
+  givenAt: string
+  changedAt: string | null
+}
+
+// ---------------------------------------------------------------------------------------
+// E34: the review queue's history, and the wall renderer (ADR 0019)
+// ---------------------------------------------------------------------------------------
+
+/** An earlier decision on a case's review: governance's CASE_REVIEW gate, decided. */
+export interface ReviewHistoryEntry {
+  approvalId: string
+  requestedAt: string
+  outcome: 'approved' | 'returned' | 'pending' | 'expired'
+  decidedBy?: string
+  decidedAt?: string
+  comment?: string
+}
+
+/** A wall display's read-only token. The secret is shown once, when it is issued. */
+export interface WallRendererToken {
+  id: string
+  ref: string
+  label: string
+  issuedBy: string
+  issuedAt: string
+  revokedBy?: string
+  revokedAt?: string
+  lastSeenAt?: string
+}
+
+/** One rectangle a display draws: a group of screens, or one screen. */
+export interface WallZone {
+  id: string
+  cells: number[]
+  content: WallContentKey
+  contextRef?: string
+  /** Visitor Mode is on and this content is not released-safe: the display draws nothing of it. */
+  muted: boolean
+}
+
+/** The zones of the layout on the wall (the last one published), not the planner's. */
+export interface WallZones {
+  published?: WallPublishedRef
+  visitorMode: boolean
+  rows: number
+  cols: number
+  zones: WallZone[]
+  at: string
+}
+
+export interface WallZoneItem {
+  kind: 'brief'
+  ref: string
+  title: string
+  detail?: string
+  at?: string
+}
+
+export interface WallZoneContent {
+  zone: WallZone
+  /** reporting holds it; muted under Visitor Mode; not_connected when no service feeds the wall yet. */
+  source: 'reporting' | 'muted' | 'not_connected'
+  items: WallZoneItem[]
+  counts: { key: string; label: string; count: number }[]
+  at: string
+}
+
+// ---------------------------------------------------------------- retention (E39, ADR 0021)
+
+/** A retention class as configured in evidence. `placeholder` until the client confirms the period. */
+export interface RetentionClass {
+  name: string
+  label: string
+  /** Null: kept indefinitely, never due. */
+  days: number | null
+  placeholder: boolean
+}
+
+export interface RetentionSchedule {
+  evidenceId: string
+  caseId?: string
+  retentionClass: string
+  classLabel: string
+  placeholder: boolean
+  anchorAt: string
+  expiresAt?: string
+  /** The store's compliance lock: nothing can delete the original before it. */
+  lockedUntil: string
+  /** The later of expiry and lock; absent when the class has no period. */
+  dueAt?: string
+  due: boolean
+  legalHold: boolean
+  legalHoldReason?: string
+  legalHoldBy?: string
+  legalHoldAt?: string
+  disposalId?: string
+  disposedAt?: string
+  etag: string
+}
+
+export interface RetentionItem {
+  schedule: RetentionSchedule
+  contentType: string
+  sizeBytes: number
+  sha256: string
+  role?: string
+  sourceUrl?: string
+  status: 'active' | 'quarantined' | 'disposed'
+  registeredAt: string
+}
+
+export type RetentionListView = 'due' | 'upcoming' | 'held' | 'all'
+
+export type DisposalStatus = 'awaiting_approval' | 'approved' | 'rejected' | 'expired' | 'completed'
+
+export interface DisposalItem {
+  evidenceId: string
+  sha256: string
+  sizeBytes: number
+  contentType: string
+  caseId?: string
+  retentionClass: string
+  dueAt: string
+  status: 'pending' | 'disposed'
+  disposedAt?: string
+  certificateId?: string
+}
+
+export interface Disposal {
+  id: string
+  status: DisposalStatus
+  reason: string
+  requesterId: string
+  requesterName: string
+  requestedAt: string
+  approvalId?: string
+  approvalType?: ApprovalType
+  settledAt?: string
+  completedAt?: string
+  items: DisposalItem[]
+  etag: string
+}
+
+/** What one "Destroy now" did, and what it had to leave (legal_hold, object_locked, not_due). */
+export interface DisposalExecution {
+  disposal: Disposal
+  certificateId?: string
+  disposed: string[]
+  blocked: { evidenceId: string; code: string; message: string }[]
+}
+
+export interface DisposalCertificate {
+  id: string
+  disposalId: string
+  approvalId: string
+  issuedAt: string
+  issuedById: string
+  issuedByName: string
+  itemCount: number
+  sha256: string
+  previousSha256?: string
+  /** The hash recomputed over the stored body now. */
+  verified: boolean
+  /** The certificate itself: the exact JSON that was hashed. */
+  body: string
+}
+
+export interface IntegrityRun {
+  id: string
+  trigger: 'scheduled' | 'manual'
+  startedBy: string
+  startedAt: string
+  finishedAt?: string
+  rate: number
+  checked: number
+  passed: number
+  failed: number
+  unreachable: number
+}
+
+export type IntegrityOutcome =
+  'passed' | 'hash_mismatch' | 'missing' | 'timestamp_invalid' | 'unreachable'
+
+export interface IntegrityCheck {
+  evidenceId: string
+  checkedAt: string
+  outcome: IntegrityOutcome
+  expectedSha256: string
+  actualSha256?: string
+  /** valid, invalid, pending (no token yet) or "not checked". */
+  timestampStatus: string
+  detail?: string
+}
+
+export interface IntegrityRunDetail {
+  run: IntegrityRun
+  checks: IntegrityCheck[]
 }

@@ -4,6 +4,7 @@ import type {
   GeoLocation,
   LocationSubject,
   MapArea,
+  MapBoundaries,
   MapFeature,
   MapLayer,
   MapLayerKey,
@@ -40,6 +41,7 @@ type GeoApi = Pick<
   | 'mapLayers'
   | 'mapFeatures'
   | 'mapAreas'
+  | 'mapBoundaries'
 >
 
 const FEED_READ: Role[] = ['analyst', 'supervisor', 'reviewer', 'centre_lead', 'leadership']
@@ -385,9 +387,11 @@ export function geoMocks(d: Deps): GeoApi {
           }))
         return { features, truncated: false }
       }),
-    mapAreas: (q) =>
+    mapAreas: (q, level = 'state') =>
       d.delay(() => {
         const types = subjects(q, 'geo.areas.read')
+        // The mock has no LGA polygons (ADR 0022 ships them in search), so nothing counts by LGA here.
+        if (level === 'lga') return []
         const byState = new Map<string, MapArea>()
         for (const l of live().filter((x) => types.includes(x.subjectType) && inWindow(x, q))) {
           const s = gazetteer.find((g) => g.id === l.admin1Id)
@@ -408,6 +412,12 @@ export function geoMocks(d: Deps): GeoApi {
           byState.set(s.id, a)
         }
         return [...byState.values()].sort((a, b) => b.cases + b.stories - (a.cases + a.stories))
+      }),
+    // No polygons in the mock: the map falls back to circles sized by count, as without an edition.
+    mapBoundaries: () =>
+      d.delay((): MapBoundaries => {
+        requireRead(mapReadRoles, 'geo.boundaries.read')
+        return { type: 'FeatureCollection', features: [] }
       }),
   }
 }
